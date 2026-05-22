@@ -1,0 +1,15 @@
+services:
+  mass-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: mass-dashboard
+    env_file:
+      - .env
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./dashboard_data:/app/dashboard_data
+      - ./factors:/app/factors
+    restart: unless-stopped
+

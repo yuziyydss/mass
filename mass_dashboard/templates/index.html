@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MASS 因子后台</title>
+  <style>
+    :root {
+      --bg: #f5f7f4;
+      --ink: #17201b;
+      --muted: #6b746f;
+      --line: #d9ded8;
+      --panel: #ffffff;
+      --soft: #eef3ef;
+      --accent: #0d7c66;
+      --accent-2: #c45a2d;
+      --warn: #b7791f;
+      --bad: #b42318;
+      --good: #067647;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfa;
+      padding: 18px 24px 14px;
+      position: sticky;
+      top: 0;
+      z-index: 8;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      max-width: 1480px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 22px;
+      margin: 0 0 4px;
+      font-weight: 720;
+    }
+
+    .subtle { color: var(--muted); }
+
+    button, input, select {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      height: 34px;
+      padding: 0 10px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 620;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      color: var(--muted);
+      background: #f2f4f2;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    main {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 18px 24px 34px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .metric, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .metric {
+      padding: 12px 14px;
+      min-height: 78px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .metric .value {
+      font-size: 23px;
+      font-weight: 760;
+      overflow-wrap: anywhere;
+    }
+
+    .panel {
+      margin-bottom: 16px;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-head h2 {
+      font-size: 15px;
+      margin: 0;
+    }
+
+    .filters {
+      display: grid;
+      grid-template-columns: 150px 170px 180px minmax(220px, 1fr) auto auto;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      align-items: center;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 650px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-variant-numeric: tabular-nums;
+    }
+
+    th, td {
+      border-bottom: 1px solid #eef1ee;
+      text-align: left;
+      padding: 8px 7px;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      background: #fbfcfa;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    tbody tr {
+      cursor: pointer;
+    }
+
+    tbody tr:hover td {
+      background: #f7faf8;
+    }
+
+    .num { text-align: right; }
+    .pos { color: var(--good); font-weight: 650; }
+    .neg { color: var(--bad); font-weight: 650; }
+
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: #fbfcfa;
+      border-top: 1px solid var(--line);
+    }
+
+    .pager-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .side-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .bars {
+      display: grid;
+      gap: 8px;
+      padding: 12px 14px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 96px 1fr 54px;
+      align-items: center;
+      gap: 8px;
+      min-height: 24px;
+    }
+
+    .bar-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .bar-track {
+      height: 10px;
+      background: var(--soft);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+      min-width: 2px;
+    }
+
+    .jobs {
+      display: grid;
+      gap: 8px;
+      max-height: 275px;
+      overflow: auto;
+      padding: 12px 14px;
+    }
+
+    .job {
+      display: grid;
+      grid-template-columns: 86px 86px 1fr;
+      gap: 8px;
+      border-bottom: 1px solid #eef1ee;
+      padding: 7px 0;
+      align-items: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 68px;
+      height: 24px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #edf7f3;
+      color: var(--accent);
+    }
+
+    .badge.FAILED { background: #fff1f0; color: var(--bad); }
+    .badge.RUNNING { background: #fff7e6; color: var(--warn); }
+    .badge.SKIPPED { background: #f0f2f5; color: var(--muted); }
+
+    .progress-box {
+      padding: 12px 14px;
+    }
+
+    .progress-line {
+      display: grid;
+      grid-template-columns: 110px 1fr 64px;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .progress-track {
+      height: 12px;
+      border-radius: 99px;
+      background: var(--soft);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+      transition: width .2s ease;
+    }
+
+    @media (max-width: 980px) {
+      header { position: static; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .filters { grid-template-columns: 1fr 1fr; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .side-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 580px) {
+      main, header { padding-left: 14px; padding-right: 14px; }
+      .filters, .metrics { grid-template-columns: 1fr; }
+      .pagination { align-items: flex-start; flex-direction: column; }
+      .metric .value { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div>
+        <h1>MASS 因子后台</h1>
+        <div class="subtle">每日 {{ run_time }}（{{ timezone }}）自动运行 · 当前数据日 <span id="currentDate">{{ latest_date or "暂无" }}</span></div>
+      </div>
+      <div>
+        <button id="importBtn">导入历史 CSV</button>
+        <button id="runBtn" class="primary">立即运行</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="metrics">
+      <div class="metric"><div class="label">样本数</div><div class="value" id="mRows">-</div></div>
+      <div class="metric"><div class="label">行业数</div><div class="value" id="mIndustries">-</div></div>
+      <div class="metric"><div class="label">最高 zscore</div><div class="value" id="mMax">-</div></div>
+      <div class="metric"><div class="label">最低 zscore</div><div class="value" id="mMin">-</div></div>
+      <div class="metric"><div class="label">上一交易日</div><div class="value" id="mPrev">-</div></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>MASS 数据表</h2>
+        <div class="subtle" id="tableHint">每页 100 条</div>
+      </div>
+      <div class="filters">
+        <select id="dateSelect"></select>
+        <select id="industrySelect"><option value="">全部行业</option></select>
+        <select id="directionSelect">
+          <option value="desc">MASS 高到低</option>
+          <option value="asc">MASS 低到高</option>
+        </select>
+        <input id="searchInput" placeholder="查询股票代码或名称，例如 600519 / 贵州茅台">
+        <button id="clearBtn">清空筛选</button>
+        <button id="searchBtn" class="primary">查询</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>序号</th>
+              <th>代码</th>
+              <th>名称</th>
+              <th>行业</th>
+              <th class="num">mass_raw</th>
+              <th class="num">mass_clip</th>
+              <th class="num">mass_neu</th>
+              <th class="num">zscore</th>
+              <th class="num">总市值</th>
+              <th class="num">PE</th>
+            </tr>
+          </thead>
+          <tbody id="massBody"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <div class="subtle" id="pageInfo">-</div>
+        <div class="pager-controls">
+          <button id="firstPageBtn">首页</button>
+          <button id="prevPageBtn">上一页</button>
+          <span id="pageNo">1 / 1</span>
+          <button id="nextPageBtn">下一页</button>
+          <button id="lastPageBtn">末页</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="side-grid">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>高盛关注模块</h2>
+          <div class="subtle">MASS × 高盛披露持仓</div>
+        </div>
+        <div class="table-wrap" style="max-height:360px">
+          <table>
+            <thead>
+              <tr>
+                <th>代码</th>
+                <th>名称</th>
+                <th>行业</th>
+                <th>理由</th>
+                <th>高盛主体</th>
+                <th class="num">zscore</th>
+                <th class="num">变化</th>
+                <th class="num">持股比</th>
+              </tr>
+            </thead>
+            <tbody id="focusBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <div class="panel-head"><h2>运行进度</h2></div>
+          <div class="progress-box">
+            <div class="progress-line">
+              <span id="progressStage">暂无任务</span>
+              <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+              <span class="num" id="progressPct">0%</span>
+            </div>
+            <div class="subtle" id="progressText">等待下一次调度</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>行业 MASS 均值</h2></div>
+          <div class="bars" id="industryBars"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>任务日志</h2></div>
+          <div class="jobs" id="jobsBox"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>手动补跑</h2>
+        <div>
+          <input id="manualDate" placeholder="交易日 YYYYMMDD">
+          <button id="forceRunBtn">补跑日期</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = { page: 1, perPage: 100, totalPages: 1, total: 0 };
+    const fmt = (v, digits = 2) => v === null || v === undefined || Number.isNaN(Number(v)) ? "-" : Number(v).toFixed(digits);
+    const cls = (v) => Number(v) >= 0 ? "pos" : "neg";
+
+    async function getJson(url, options) {
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function selectedDate() {
+      return $("dateSelect").value || "";
+    }
+
+    function queryParams(extra = {}) {
+      const params = new URLSearchParams({
+        date: selectedDate(),
+        page: state.page,
+        per_page: state.perPage,
+        direction: $("directionSelect").value,
+        industry: $("industrySelect").value,
+        q: $("searchInput").value.trim(),
+        ...extra,
+      });
+      return params.toString();
+    }
+
+    async function loadDates() {
+      const data = await getJson("/api/dates");
+      $("dateSelect").innerHTML = data.dates.map(d => `<option value="${d.trade_date}">${d.trade_date} (${d.row_count})</option>`).join("");
+    }
+
+    async function loadIndustries() {
+      const data = await getJson(`/api/industries?date=${selectedDate()}`);
+      $("industrySelect").innerHTML = `<option value="">全部行业</option>` + data.industries.map(v => `<option value="${v}">${v}</option>`).join("");
+    }
+
+    async function loadSummary() {
+      const data = await getJson(`/api/summary?date=${selectedDate()}`);
+      $("currentDate").textContent = data.trade_date || "暂无";
+      $("mRows").textContent = data.row_count ?? "-";
+      $("mIndustries").textContent = data.industry_count ?? "-";
+      $("mMax").textContent = fmt(data.max_zscore);
+      $("mMin").textContent = fmt(data.min_zscore);
+      $("mPrev").textContent = data.previous_trade_date || "-";
+    }
+
+    async function loadMassTable() {
+      const data = await getJson(`/api/mass?${queryParams()}`);
+      state.page = data.page || 1;
+      state.totalPages = data.total_pages || 1;
+      state.total = data.total || 0;
+      const start = state.total ? (state.page - 1) * state.perPage + 1 : 0;
+      $("massBody").innerHTML = data.rows.map((row, idx) => {
+        const index = start + idx;
+        return `
+          <tr data-code="${row.code}">
+            <td>${index}</td>
+            <td>${row.code}</td>
+            <td>${row.name || ""}</td>
+            <td>${row.industry || ""}</td>
+            <td class="num">${fmt(row.mass_raw, 4)}</td>
+            <td class="num">${fmt(row.mass_clip, 4)}</td>
+            <td class="num">${fmt(row.mass_neu, 4)}</td>
+            <td class="num ${cls(row.mass_zscore)}">${fmt(row.mass_zscore, 3)}</td>
+            <td class="num">${fmt(row.total_mkt_cap, 0)}</td>
+            <td class="num">${fmt(row.pe, 2)}</td>
+          </tr>
+        `;
+      }).join("");
+      document.querySelectorAll("#massBody tr").forEach(tr => {
+        tr.addEventListener("click", () => {
+          window.location.href = `/stock?code=${encodeURIComponent(tr.dataset.code)}`;
+        });
+      });
+      updatePager();
+    }
+
+    function updatePager() {
+      const from = state.total ? (state.page - 1) * state.perPage + 1 : 0;
+      const to = Math.min(state.total, state.page * state.perPage);
+      $("pageInfo").textContent = `显示 ${from}-${to} / 共 ${state.total} 条`;
+      $("pageNo").textContent = `${state.page} / ${Math.max(1, state.totalPages)}`;
+      $("firstPageBtn").disabled = state.page <= 1;
+      $("prevPageBtn").disabled = state.page <= 1;
+      $("nextPageBtn").disabled = state.page >= state.totalPages;
+      $("lastPageBtn").disabled = state.page >= state.totalPages;
+      $("tableHint").textContent = `每页 100 条 · 当前筛选 ${state.total} 条`;
+    }
+
+    async function loadFocus() {
+      const data = await getJson(`/api/focus?date=${selectedDate()}&limit=30`);
+      $("focusBody").innerHTML = data.rows.map(row => `
+        <tr data-code="${row.code}">
+          <td>${row.code}</td>
+          <td>${row.name || ""}</td>
+          <td>${row.industry || ""}</td>
+          <td>${row.focus_reason || ""}</td>
+          <td>${row.holder_name || ""}</td>
+          <td class="num ${cls(row.mass_zscore)}">${fmt(row.mass_zscore, 3)}</td>
+          <td class="num ${cls(row.zscore_change)}">${fmt(row.zscore_change, 3)}</td>
+          <td class="num">${fmt(row.hold_ratio, 3)}</td>
+        </tr>
+      `).join("");
+      document.querySelectorAll("#focusBody tr").forEach(tr => {
+        tr.addEventListener("click", () => {
+          window.location.href = `/stock?code=${encodeURIComponent(tr.dataset.code)}`;
+        });
+      });
+    }
+
+    async function loadIndustry() {
+      const data = await getJson(`/api/industry?date=${selectedDate()}`);
+      const rows = data.rows.slice(0, 18);
+      const maxAbs = Math.max(0.01, ...rows.map(r => Math.abs(Number(r.avg_zscore || 0))));
+      $("industryBars").innerHTML = rows.map(row => {
+        const val = Number(row.avg_zscore || 0);
+        const width = Math.max(2, Math.abs(val) / maxAbs * 100);
+        const color = val >= 0 ? "var(--accent)" : "var(--accent-2)";
+        return `
+          <div class="bar-row" title="${row.industry}">
+            <div class="bar-label">${row.industry}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${width}%;background:${color}"></div></div>
+            <div class="num ${cls(val)}">${fmt(val, 2)}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function loadJobs() {
+      const data = await getJson("/api/jobs");
+      $("jobsBox").innerHTML = data.rows.slice(0, 18).map(job => `
+        <div class="job">
+          <span class="badge ${job.status}">${job.status}</span>
+          <span>${job.trade_date || "-"}</span>
+          <span class="subtle">${job.started_at || ""} · ${job.error_message || `${job.row_count || 0} rows`}</span>
+        </div>
+      `).join("");
+    }
+
+    async function loadProgress() {
+      const data = await getJson("/api/progress");
+      const p = data.progress;
+      if (!p) return;
+      const pct = Number(p.percent || 0);
+      $("progressStage").textContent = p.stage || "-";
+      $("progressFill").style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      $("progressPct").textContent = `${fmt(pct, 1)}%`;
+      $("progressText").textContent = `${p.trade_date || "-"} · ${p.processed || 0}/${p.total || 0} · ${p.current_code || ""} ${p.message || ""}`;
+    }
+
+    async function refreshMain(resetPage = false) {
+      if (resetPage) state.page = 1;
+      await loadSummary();
+      await Promise.all([loadMassTable(), loadFocus(), loadIndustry(), loadJobs(), loadProgress()]);
+    }
+
+    $("dateSelect").addEventListener("change", async () => {
+      state.page = 1;
+      await loadIndustries();
+      await refreshMain(true);
+    });
+    $("industrySelect").addEventListener("change", () => refreshMain(true));
+    $("directionSelect").addEventListener("change", () => refreshMain(true));
+    $("searchBtn").addEventListener("click", () => refreshMain(true));
+    $("searchInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") refreshMain(true);
+    });
+    $("searchInput").addEventListener("input", () => {
+      clearTimeout(window.searchTimer);
+      window.searchTimer = setTimeout(() => refreshMain(true), 300);
+    });
+    $("clearBtn").addEventListener("click", () => {
+      $("industrySelect").value = "";
+      $("searchInput").value = "";
+      $("directionSelect").value = "desc";
+      refreshMain(true);
+    });
+    $("firstPageBtn").addEventListener("click", () => { state.page = 1; loadMassTable(); });
+    $("prevPageBtn").addEventListener("click", () => { state.page = Math.max(1, state.page - 1); loadMassTable(); });
+    $("nextPageBtn").addEventListener("click", () => { state.page = Math.min(state.totalPages, state.page + 1); loadMassTable(); });
+    $("lastPageBtn").addEventListener("click", () => { state.page = state.totalPages; loadMassTable(); });
+    $("runBtn").addEventListener("click", async () => {
+      await getJson("/api/run", { method: "POST" });
+      await loadJobs();
+      alert("任务已启动，可以在任务日志查看进度");
+    });
+    $("forceRunBtn").addEventListener("click", async () => {
+      const date = $("manualDate").value.trim();
+      await getJson(`/api/run?date=${encodeURIComponent(date)}&force=1`, { method: "POST" });
+      await loadJobs();
+      alert("补跑任务已启动");
+    });
+    $("importBtn").addEventListener("click", async () => {
+      const data = await getJson("/api/import", { method: "POST" });
+      await loadDates();
+      await loadIndustries();
+      await refreshMain(true);
+      alert(`已导入 ${data.imported_rows} 行`);
+    });
+
+    (async function init() {
+      await loadDates();
+      await loadIndustries();
+      await refreshMain(true);
+      setInterval(() => Promise.all([loadJobs(), loadProgress()]), 10000);
+    })().catch(err => alert(err.message));
+  </script>
+</body>
+</html>

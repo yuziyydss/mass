@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ code }} 个股 MASS 详情</title>
+  <style>
+    :root {
+      --bg: #f5f7f4;
+      --ink: #17201b;
+      --muted: #6b746f;
+      --line: #d9ded8;
+      --panel: #ffffff;
+      --accent: #0d7c66;
+      --bad: #b42318;
+      --good: #067647;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+    }
+
+    header {
+      background: #fbfcfa;
+      border-bottom: 1px solid var(--line);
+      padding: 18px 24px 14px;
+    }
+
+    .topbar, main {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    h1 {
+      font-size: 22px;
+      margin: 0 0 4px;
+      font-weight: 720;
+    }
+
+    a, button {
+      color: var(--ink);
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 6px;
+      height: 34px;
+      padding: 0 10px;
+      font: inherit;
+      cursor: pointer;
+      font-weight: 620;
+    }
+
+    main {
+      padding: 18px 24px 34px;
+    }
+
+    .subtle { color: var(--muted); }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .metric, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .metric {
+      padding: 12px 14px;
+      min-height: 78px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .metric .value {
+      font-size: 22px;
+      font-weight: 760;
+      overflow-wrap: anywhere;
+    }
+
+    .panel {
+      margin-bottom: 16px;
+    }
+
+    .panel h2 {
+      font-size: 15px;
+      margin: 0;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .chart-box {
+      padding: 14px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 340px;
+      display: block;
+      background: #fff;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 560px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-variant-numeric: tabular-nums;
+    }
+
+    th, td {
+      border-bottom: 1px solid #eef1ee;
+      text-align: left;
+      padding: 8px 7px;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      background: #fbfcfa;
+      position: sticky;
+      top: 0;
+    }
+
+    .num { text-align: right; }
+    .pos { color: var(--good); font-weight: 650; }
+    .neg { color: var(--bad); font-weight: 650; }
+
+    @media (max-width: 820px) {
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      main, header { padding-left: 14px; padding-right: 14px; }
+    }
+
+    @media (max-width: 520px) {
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div>
+        <h1>{{ code }} {{ profile.get("name", "") }}</h1>
+        <div class="subtle">{{ profile.get("industry", "") }} · 最新数据日 {{ profile.get("trade_date", "-") }}</div>
+      </div>
+      <button onclick="history.back()">返回</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="metrics">
+      <div class="metric"><div class="label">最新 zscore</div><div class="value" id="mZ">-</div></div>
+      <div class="metric"><div class="label">最新 raw</div><div class="value" id="mRaw">-</div></div>
+      <div class="metric"><div class="label">最高 zscore</div><div class="value" id="mMax">-</div></div>
+      <div class="metric"><div class="label">最低 zscore</div><div class="value" id="mMin">-</div></div>
+      <div class="metric"><div class="label">历史期数</div><div class="value" id="mCount">-</div></div>
+    </section>
+
+    <section class="panel">
+      <h2>MASS 历史折线图</h2>
+      <div class="chart-box">
+        <canvas id="chart" width="1180" height="360"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>历史数据（按时间顺序）</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th class="num">mass_raw</th>
+              <th class="num">mass_neu</th>
+              <th class="num">zscore</th>
+              <th>名称</th>
+              <th>行业</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const code = "{{ code }}";
+    const $ = (id) => document.getElementById(id);
+    const fmt = (v, digits = 2) => v === null || v === undefined || Number.isNaN(Number(v)) ? "-" : Number(v).toFixed(digits);
+    const cls = (v) => Number(v) >= 0 ? "pos" : "neg";
+
+    async function getJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function drawLine(points) {
+      const canvas = $("chart");
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = "#d9ded8";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = 28 + i * (h - 68) / 4;
+        ctx.beginPath();
+        ctx.moveTo(54, y);
+        ctx.lineTo(w - 24, y);
+        ctx.stroke();
+      }
+
+      if (points.length < 2) return;
+
+      const ys = points.map(p => p.y).filter(v => Number.isFinite(v));
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const span = Math.max(0.01, maxY - minY);
+      const xAt = i => 54 + i * (w - 78) / (points.length - 1);
+      const yAt = v => h - 40 - (v - minY) / span * (h - 68);
+
+      ctx.strokeStyle = "#0d7c66";
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      points.forEach((p, i) => {
+        const x = xAt(i);
+        const y = yAt(p.y);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      ctx.fillStyle = "#17201b";
+      ctx.font = "12px Segoe UI";
+      ctx.fillText(fmt(maxY, 2), 8, 32);
+      ctx.fillText(fmt(minY, 2), 8, h - 36);
+      ctx.fillText(points[0].x, 54, h - 12);
+      ctx.fillText(points[points.length - 1].x, w - 92, h - 12);
+    }
+
+    async function init() {
+      const data = await getJson(`/api/history?code=${encodeURIComponent(code)}`);
+      const rows = data.rows || [];
+      $("historyBody").innerHTML = rows.map(row => `
+        <tr>
+          <td>${row.trade_date}</td>
+          <td class="num">${fmt(row.mass_raw, 4)}</td>
+          <td class="num">${fmt(row.mass_neu, 4)}</td>
+          <td class="num ${cls(row.mass_zscore)}">${fmt(row.mass_zscore, 3)}</td>
+          <td>${row.name || ""}</td>
+          <td>${row.industry || ""}</td>
+        </tr>
+      `).join("");
+
+      const valid = rows.filter(row => row.mass_raw !== null && row.mass_raw !== undefined);
+      const latest = rows[rows.length - 1] || {};
+      const zscores = valid.map(row => Number(row.mass_zscore));
+      $("mZ").textContent = fmt(latest.mass_zscore, 3);
+      $("mRaw").textContent = fmt(latest.mass_raw, 4);
+      $("mMax").textContent = zscores.length ? fmt(Math.max(...zscores), 3) : "-";
+      $("mMin").textContent = zscores.length ? fmt(Math.min(...zscores), 3) : "-";
+      $("mCount").textContent = rows.length;
+      drawLine(valid.map(row => ({ x: row.trade_date, y: Number(row.mass_raw) })));
+    }
+
+    init().catch(err => alert(err.message));
+  </script>
+</body>
+</html>
