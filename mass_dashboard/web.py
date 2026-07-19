@@ -330,6 +330,22 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                         {"name": "volatility_20"},
                     ]
                     self._send_json({"rows": factor_analysis.compare_factors(config.db_path, specs)})
+                elif path == "/api/factor-synth":
+                    # 合成因子: momentum_5(正) + volatility_20(负) + mass_zscore(正)
+                    panel = factor_analysis.synthesize_factor(
+                        config.db_path,
+                        ["momentum_5", "volatility_20", "mass_zscore"],
+                        [1.0, -1.0, 0.5],
+                    )
+                    if panel.empty:
+                        self._send_json({"error": "合成因子面板为空"})
+                        return
+                    dates = panel.index.tolist()
+                    close_panel = storage.load_close_panel(config.db_path, dates[0], dates[-1])
+                    common = panel.index.intersection(close_panel.index).tolist()
+                    self._send_json(factor_analysis.analyze_factor_from_panels(
+                        panel.loc[common], close_panel.loc[common], [5, 10, 20]
+                    ))
                 elif path == "/api/backtest":
                     self._send_json(
                         backtest.run_backtest(

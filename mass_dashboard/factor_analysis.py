@@ -323,3 +323,53 @@ def compare_factors(db_path, factor_specs: list[dict]) -> list[dict]:
             "n_dates": len(common),
         })
     return results
+
+
+def synthesize_factor(db_path, components: list, weights: list[float] = None) -> "pd.DataFrame":
+    """多因子合成：加权合成多个因子面板，先截面标准化再加权。
+
+    components: 因子名列表，如 ["momentum_5", "volatility_20"]
+    weights: 权重，默认等权；动量正贡献，波动率负贡献自动处理
+    返回合成面板（行=日期,列=code）。
+    """
+    from . import momentum
+    if weights is None:
+        weights = [1.0] * len(components)
+    panels = []
+    for name in components:
+        if name.startswith("momentum"):
+            p = momentum.compute_momentum_panel(db_path, int(name.split("_")[1]))
+        elif name.startswith("volatility"):
+            p = momentum.compute_volatility_panel(db_path, int(name.split("_")[1]))
+        elif name in ("mass_zscore", "mass_neu", "mass_raw"):
+            p = storage.load_factor_panel(db_path, name)
+        else:
+            continue
+        if not p.empty:
+            panels.append((name, p))
+    if not panels:
+        return pd.DataFrame()
+    # 取公共日期
+    common_idx = panels[0][1].index
+    for _, p in panels[1:]:
+        common_idx = common_idx.intersection(p.index)
+    if len(common_idx) < 3:
+        return pd.DataFrame()
+    # 截面标准化 + 加权合成
+    synthesized = pd.DataFrame(index=common_idx)
+    for (name, p), w in zip(panels, weights):
+        sub = p.loc[common_idx]
+        # 截面zscore
+        mu = sub.mean(axis=1)
+        sd = sub.std(axis=1)
+        z = sub.sub(mu, axis=0).div(sd.replace(0, np.nan), axis=0)
+        synthesized[name] = z.mean(axis=1)  # placeholder
+    # 加权
+    result = pd.DataFrame(index=common_idx, columns=panels[0][1].columns, dtype=float)
+    for (name, p), w in zip(panels, weights):
+        sub = p.loc[common_idx]
+        mu = sub.mean(axis=1)
+        sd = sub.std(axis=1)
+        z = sub.sub(mu, axis=0).div(sd.replace(0, np.nan), axis=0)
+        result = result.add(w * z, fill_value=0)
+    return result

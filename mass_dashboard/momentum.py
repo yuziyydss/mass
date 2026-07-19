@@ -77,7 +77,7 @@ def compute_volatility_panel(db_path: Path, period: int = 20) -> pd.DataFrame:
     df = df.dropna(subset=["close"])
     panel = df.pivot(index="trade_date", columns="code", values="close").sort_index()
     # 日收益率
-    rets = panel.pct_change()
+    rets = panel.pct_change(fill_method=None)
     # 滚动标准差 * sqrt(252) 年化
     vol = rets.rolling(period).std() * np.sqrt(252)
     return vol
