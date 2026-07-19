@@ -1342,6 +1342,14 @@
       try { localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light"); } catch(e) {}
     });
     try { if (localStorage.getItem("theme") === "dark") { document.body.classList.add("dark"); $("themeBtn").textContent = "☀️"; } } catch(e) {}
+    // 快捷键: Ctrl+1-4 切tab, F5防误刷新(保留默认)
+    document.addEventListener("keydown", e => {
+      if (e.ctrlKey && ["1","2","3","4"].includes(e.key)) {
+        e.preventDefault();
+        const tabs = ["overview","mass","factor","screen"];
+        switchTab(tabs[parseInt(e.key)-1]);
+      }
+    });
 
     async function refreshMain(resetPage = false) {
       if (resetPage) state.page = 1;
