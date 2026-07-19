@@ -844,3 +844,63 @@ def ic_boxplot(db_path, factor_col: str = "mass_zscore", forward_days_list: list
             "n": int(len(vals)),
         })
     return {"factor": factor_col, "boxes": boxes}
+
+
+def ic_after_clip(db_path, factor_col: str = "mass_zscore", forward_days: int = 5, k: float = 5.0) -> dict:
+    """横截面MAD去极值后的IC vs 原始IC对比。
+    看极值对IC的影响: 如果去极值后IC显著变化,说明IC被极值驱动。
+    """
+    import numpy as np
+    panel = storage.load_factor_panel(db_path, factor_col=factor_col)
+    if panel.empty:
+        return {"error": "因子面板为空"}
+    close_panel = storage.load_close_panel(db_path, panel.index[0], panel.index[-1])
+    common = panel.index.intersection(close_panel.index).tolist()
+    if len(common) < 3:
+        return {"error": "公共日期不足"}
+    fwd = compute_forward_returns(close_panel.loc[common], [forward_days])
+    fwd_panel = fwd[forward_days]
+    orig_ics = []
+    clipped_ics = []
+    from scipy.stats import spearmanr
+    for date in common:
+        f_row = panel.loc[date].dropna()
+        r_row = fwd_panel.loc[date].dropna() if date in fwd_panel.index else pd.Series(dtype=float)
+        codes = f_row.index.intersection(r_row.index)
+        if len(codes) < 30:
+            continue
+        f_vals = f_row.loc[codes].astype(float)
+        r_vals = r_row.loc[codes].astype(float)
+        if f_vals.nunique() < 2 or r_vals.nunique() < 2:
+            continue
+        try:
+            ic_orig, _ = spearmanr(f_vals, r_vals)
+            if pd.isna(ic_orig):
+                continue
+            orig_ics.append(float(ic_orig))
+        except Exception:
+            continue
+        # MAD clip
+        med = f_vals.median()
+        mad = (f_vals - med).abs().median()
+        if mad > 0:
+            z = (f_vals - med) / (1.4826 * mad)
+            f_clipped = med + z.clip(-k, k) * 1.4826 * mad
+        else:
+            f_clipped = f_vals
+        try:
+            ic_clip, _ = spearmanr(f_clipped, r_vals)
+            if not pd.isna(ic_clip):
+                clipped_ics.append(float(ic_clip))
+        except Exception:
+            pass
+    if not orig_ics:
+        return {"error": "IC不足"}
+    return {
+        "factor": factor_col,
+        "forward_days": forward_days,
+        "n_periods": len(orig_ics),
+        "orig_ic": round(float(np.mean(orig_ics)), 4),
+        "clipped_ic": round(float(np.mean(clipped_ics)), 4) if clipped_ics else None,
+        "delta": round(float(np.mean(clipped_ics) - np.mean(orig_ics)), 4) if clipped_ics else None,
+    }
