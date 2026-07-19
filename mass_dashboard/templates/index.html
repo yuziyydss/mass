@@ -581,6 +581,29 @@
 
       <!-- ── 选股筛选 Tab ── -->
       <section class="tab-panel" id="tab-screen">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>多因子选股</h2>
+            <div class="subtle">综合评分 top-N 组合</div>
+          </div>
+          <div style="padding:12px 16px">
+            <div class="field-row">
+              <input id="pfComps" value="mass_zscore:1:1,momentum_5:1:1,volatility_20:0.5:-1" style="flex:1;min-width:300px;font-size:12px">
+              <label class="subtle">选股数:</label>
+              <input id="pfN" type="number" value="20" min="5" max="100" style="width:60px">
+              <button id="pfBtn" class="primary" style="height:30px">生成</button>
+              <span id="pfStatus" class="subtle"></span>
+            </div>
+            <canvas id="pfChart" width="1140" height="200" style="margin-top:10px"></canvas>
+            <div class="table-wrap" style="max-height:360px;margin-top:10px">
+              <table>
+                <thead><tr><th>排名</th><th>代码</th><th>名称</th><th>行业</th><th class="num">综合分</th></tr></thead>
+                <tbody id="pfBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section class="side-grid">
           <div class="panel">
             <div class="panel-head">
@@ -1102,6 +1125,29 @@
       } catch(e) { $("cmpStatus").textContent = "错误: " + e.message; }
     }
 
+    async function runPortfolio() {
+      const comps = $("pfComps").value.trim();
+      const n = $("pfN").value;
+      $("pfStatus").textContent = "计算中…";
+      try {
+        const d = await getJson(`/api/portfolio?components=${encodeURIComponent(comps)}&n=${n}`);
+        if (d.error) { $("pfStatus").textContent = d.error; return; }
+        const top = d.top || [];
+        $("pfStatus").textContent = `${d.date} · 候选${d.n_candidates}只 · 取${top.length}只`;
+        $("pfBody").innerHTML = top.map((x, i) => `<tr data-code="${x.code}">
+          <td>${i+1}</td><td>${x.code}</td><td>${x.name||""}</td><td>${x.industry||""}</td>
+          <td class="num pos">${x.score}</td></tr>`).join("");
+        // 评分柱状图
+        drawBarChart("pfChart",
+          top.slice(0,20).map(x => x.code.split(".")[0]),
+          top.slice(0,20).map(x => x.score),
+          ["#0d7c66"]);
+        document.querySelectorAll("#pfBody tr[data-code]").forEach(tr => {
+          tr.addEventListener("click", () => { window.location.href = `/stock?code=${encodeURIComponent(tr.dataset.code)}`; });
+        });
+      } catch(e) { $("pfStatus").textContent = "错误: " + e.message; }
+    }
+
     async function loadProgress() {
       const data = await getJson("/api/progress");
       const p = data.progress;
@@ -1119,7 +1165,7 @@
       document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === `tab-${name}`));
       if (name === "mass" && !state.loaded.mass) { loadMassTable(); state.loaded.mass = true; }
       if (name === "factor" && !state.loaded.factor) { loadFocus(); loadFactorAnalysis(); state.loaded.factor = true; }
-      if (name === "screen" && !state.loaded.screen) { loadWeekFlow(); loadBottom(); state.loaded.screen = true; }
+      if (name === "screen" && !state.loaded.screen) { loadWeekFlow(); loadBottom(); runPortfolio(); state.loaded.screen = true; }
     }
     document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
     // 暗色模式
@@ -1171,6 +1217,7 @@
       await loadWatchlist();
     });
     if ($("cmpBtn")) $("cmpBtn").addEventListener("click", () => runCompare());
+    if ($("pfBtn")) $("pfBtn").addEventListener("click", () => runPortfolio());
     $("searchInput").addEventListener("keydown", (event) => { if (event.key === "Enter") { state.page = 1; loadMassTable(); } });
     $("searchInput").addEventListener("input", () => {
       clearTimeout(window.searchTimer);
