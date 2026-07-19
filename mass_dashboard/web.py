@@ -253,6 +253,10 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     code = qs.get("code", [""])[0]
                     limit = int(qs.get("limit", ["250"])[0])
                     self._send_json({"rows": storage.load_kline(config.db_path, code, limit)})
+                elif path == "/api/universe":
+                    date = qs.get("date", [None])[0] or storage.latest_trade_date(config.db_path)
+                    codes = storage.universe_filter(config.db_path, date)
+                    self._send_json({"date": date, "codes": codes, "count": len(codes)})
                 elif path == "/api/industry-relative":
                     date = qs.get("date", [None])[0]
                     if not date:

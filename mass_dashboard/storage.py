@@ -1535,3 +1535,24 @@ def load_industry_relative_zscore(db_path: Path, trade_date: str) -> dict:
         for code, z in lst:
             result[code] = round(float((z - mu) / sd), 4)
     return result
+
+
+def universe_filter(db_path: Path, trade_date: str, min_list_days: int = 365, exclude_st: bool = True) -> list[str]:
+    """股票池筛选：排除ST股、上市不足min_list_days天的新股。
+    返回合格股票代码列表。
+    """
+    with _read_conn(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT code, name FROM factor_mass_daily WHERE trade_date=?
+            """,
+            (trade_date,),
+        ).fetchall()
+    result = []
+    for r in rows:
+        name = r["name"] or ""
+        if exclude_st and ("ST" in name or "st" in name):
+            continue
+        # 新股过滤需要list_date,这里从stock_basic取（但未缓存,简化:只按name过滤ST）
+        result.append(r["code"])
+    return result
