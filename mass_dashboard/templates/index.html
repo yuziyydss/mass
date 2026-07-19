@@ -666,10 +666,15 @@
     const skeleton = (cols, rows) => Array.from({length: rows||5}, () => `<tr><td class="skeleton" colspan="${cols}">loading</td></tr>`).join("");
 
     async function getJson(url, options) {
+      // 会话级缓存: 同一会话内相同URL只请求一次(GET且无options)
+      if (!options && url.indexOf("/api/") === 0 && _cache[url]) return JSON.parse(JSON.stringify(_cache[url]));
       const res = await fetch(url, options);
       if (!res.ok) throw new Error(await res.text());
-      return res.json();
+      const data = await res.json();
+      if (!options) _cache[url] = data;
+      return data;
     }
+    const _cache = {};
 
     function selectedDate() {
       return $("dateSelect").value || "";
