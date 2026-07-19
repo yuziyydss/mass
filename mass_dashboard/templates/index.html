@@ -535,6 +535,8 @@
             </div>
             <div class="subtle" style="margin-bottom:6px">分层累计净值</div>
             <canvas id="quantileChart" width="1140" height="200"></canvas>
+            <div class="subtle" style="margin:14px 0 6px">IC 分布箱线图（各前瞻周期）</div>
+            <canvas id="boxChart" width="1140" height="160"></canvas>
             <div class="subtle" style="margin:14px 0 6px">因子值分布（最新截面）</div>
             <canvas id="distChart" width="1140" height="180"></canvas>
             <div id="distStats" class="subtle" style="margin-top:6px"></div>
@@ -975,9 +977,49 @@
         }
         // 因子值分布
         loadDistribution(factor);
+        loadIcBox();
       } catch (e) {
         $("factorStatus").textContent = "错误: " + e.message;
       }
+    }
+
+    async function loadIcBox() {
+      try {
+        const d = await getJson(`/api/ic-boxplot?factor=${$("factorSelect").value}`);
+        const boxes = (d.boxes||[]).filter(b => b.median != null);
+        if (!boxes.length) return;
+        const canvas = $("boxChart");
+        const ctx = canvas.getContext("2d");
+        const w = canvas.width, h = canvas.height;
+        ctx.clearRect(0,0,w,h); ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);
+        const vals = boxes.flatMap(b => [b.min,b.max,b.q1,b.q3,b.median]).filter(v=>v!=null);
+        const lo = Math.min(...vals, 0), hi = Math.max(...vals, 0);
+        const span = Math.max(0.01, hi-lo);
+        const padL=40,padR=14,padT=12,padB=26;
+        const n = boxes.length;
+        const cw = (w-padL-padR)/n;
+        const yAt = v => padT + (1-(v-lo)/span)*(h-padT-padB);
+        // 网格+0线
+        ctx.strokeStyle="#eef1ee"; ctx.lineWidth=1;
+        for(let i=0;i<=3;i++){const y=padT+i*(h-padT-padB)/3;ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(w-padR,y);ctx.stroke();}
+        const y0=yAt(0); ctx.strokeStyle="#999"; ctx.beginPath();ctx.moveTo(padL,y0);ctx.lineTo(w-padR,y0);ctx.stroke();
+        ctx.fillStyle="#6b746f"; ctx.font="10px Segoe UI"; ctx.fillText(hi.toFixed(2),4,padT+8); ctx.fillText(lo.toFixed(2),4,h-padB);
+        // 箱体
+        boxes.forEach((b,i)=>{
+          const x=padL+i*cw+cw*0.3, bw=cw*0.4;
+          const yq1=yAt(b.q1), yq3=yAt(b.q3), ymed=yAt(b.median), ymin=yAt(b.min), ymax=yAt(b.max);
+          ctx.fillStyle="rgba(13,124,102,.12)"; ctx.fillRect(x,Math.min(yq1,yq3),bw,Math.abs(yq3-yq1));
+          ctx.strokeStyle="#0d7c66"; ctx.lineWidth=1;
+          ctx.strokeRect(x,Math.min(yq1,yq3),bw,Math.abs(yq3-yq1));
+          // 须
+          ctx.beginPath();ctx.moveTo(x+bw/2,Math.min(yq1,yq3));ctx.lineTo(x+bw/2,ymax);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(x+bw/2,Math.max(yq1,yq3));ctx.lineTo(x+bw/2,ymin);ctx.stroke();
+          // 中位线
+          ctx.strokeStyle="#c45a2d"; ctx.lineWidth=2; ctx.beginPath();ctx.moveTo(x,ymed);ctx.lineTo(x+bw,ymed);ctx.stroke();
+          ctx.fillStyle="#17201b"; ctx.font="10px Segoe UI"; ctx.textAlign="center";
+          ctx.fillText(b.period+"日",x+bw/2,h-8); ctx.textAlign="start";
+        });
+      } catch(e) {}
     }
 
     async function loadDistribution(factor) {
