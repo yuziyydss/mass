@@ -101,12 +101,35 @@ mass_dashboard/quality.py           质量检查 + 数据时效监控
 
 ## 功能模块
 
-- **4 标签页**：总览 / MASS 数据表 / 因子分析 / 选股筛选
-- **因子分析**：IC/IR、分层回测、多因子对比、回测引擎、多因子合成
-- **选股筛选**：周K下跌+净流入、底部4条件
-- **个股分析**：K线+成交量+MA、RSI+MACD、财务指标、MASS历史
-- **数据健康**：时效监控、schema 自动迁移
-- **其他**：自选股收藏、CSV 导出、API 文档(/api-docs)、暗色模式
+- **4 标签页**：总览 / MASS 数据表 / 因子分析 / 选股筛选（+ 暗色模式）
+- **因子分析**（对齐聚宽因子分析）：
+  - IC/IR、分层回测、IC 衰减柱状图、因子值分布直方图
+  - 多因子 IC 横向对比、因子衰减报告、IC 热力图（日期×周期）
+  - 行业+市值中性化后 IC、因子收益归因、多因子合成
+- **选股引擎**：多因子加权综合评分、top-N 组合构建、回测引擎（夏普/回撤/超额）、选股名单导出 Excel
+- **选股筛选**：周K下跌+净流入、底部4条件（地量/不创新低/估值低/底背离）
+- **个股分析**：K线+成交量+MA、RSI+MACD、财务指标、MASS历史、zscore 全市场百分位、个股对比
+- **行业分析**：行业统计、行业轮动热力图
+- **数据治理**：数据时效健康检查、schema 自动迁移、DB 备份、老 job 自动清理、任务失败自动重试
+- **其他**：自选股收藏、CSV 导出、API 文档（/api-docs）、骨架屏加载、前端请求缓存
+
+## 因子库
+
+- `mass_zscore` / `mass_neu` / `mass_raw` — MASS 因子（中性化/原始）
+- `momentum_5/20/60` — 动量因子（实测：短期动量 IC=+0.25 有效，中期反转 IC=-0.13）
+- `volatility_20` — 波动率因子（IC=-0.12，高波动未来差）
+- `turnover_20` — 换手率因子（IC=-0.06，高换手反转）
+
+## API（40+ 端点）
+
+访问 `/api-docs` 查看完整文档。主要端点：
+
+- 因子分析：`/api/factor-ic`、`/api/factor-quantile`、`/api/factor-compare`、`/api/factor-decay`、`/api/ic-heatmap`、`/api/neutralized-ic`、`/api/factor-returns`、`/api/factor-distribution`、`/api/factor-synth`
+- 选股/回测：`/api/portfolio`、`/api/backtest`、`/api/portfolio-export`
+- 个股：`/api/kline`、`/api/financial`、`/api/stock-percentile`、`/api/compare`、`/api/correlation`、`/api/history`
+- 筛选：`/api/mass`、`/api/week-flow`、`/api/bottom`、`/api/focus`
+- 数据：`/api/summary`、`/api/health`、`/api/dates`、`/api/industry`、`/api/industry-rotation`
+- 系统：`/api/watchlist`、`/api/export`、`/api/factor-export`、`/api/backup`、`/api/jobs`、`/api/progress`、`/api/run`、`/api/import`
 
 ## 当前数据结构
 
