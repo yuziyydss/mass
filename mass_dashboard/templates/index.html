@@ -410,6 +410,21 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2>个股对比</h2>
+            <div class="subtle">多股 MASS zscore 时序对比</div>
+          </div>
+          <div style="padding:12px 16px">
+            <div class="field-row">
+              <input id="cmpCodes" placeholder="代码逗号分隔 如 600519.SH,000001.SZ,300750.SZ" style="flex:1;min-width:300px">
+              <button id="cmpBtn" class="primary" style="height:30px">对比</button>
+              <span id="cmpStatus" class="subtle"></span>
+            </div>
+            <canvas id="cmpChart" width="1140" height="280" style="margin-top:10px"></canvas>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2>自选股</h2>
             <div class="subtle">收藏关注的股票</div>
           </div>
@@ -1070,6 +1085,23 @@
       } catch (e) { $("healthStatus").textContent = "检查失败"; }
     }
 
+    async function runCompare() {
+      const codes = $("cmpCodes").value.trim();
+      if (!codes) return;
+      $("cmpStatus").textContent = "加载中…";
+      try {
+        const d = await getJson(`/api/compare?codes=${encodeURIComponent(codes)}`);
+        const series = d.series || {};
+        const dates = d.dates || [];
+        const codeList = Object.keys(series);
+        if (!codeList.length) { $("cmpStatus").textContent = "无数据"; return; }
+        const colors = ["#0d7c66","#c45a2d","#7b3fa0","#d97706","#067647","#b42318"];
+        const lineSeries = codeList.map(c => series[c].map(v => v != null ? v : NaN));
+        drawLineChart("cmpChart", lineSeries, colors, codeList);
+        $("cmpStatus").textContent = `${codeList.length}只 · ${dates.length}期`;
+      } catch(e) { $("cmpStatus").textContent = "错误: " + e.message; }
+    }
+
     async function loadProgress() {
       const data = await getJson("/api/progress");
       const p = data.progress;
@@ -1138,6 +1170,7 @@
       $("wlCode").value = ""; $("wlName").value = "";
       await loadWatchlist();
     });
+    if ($("cmpBtn")) $("cmpBtn").addEventListener("click", () => runCompare());
     $("searchInput").addEventListener("keydown", (event) => { if (event.key === "Enter") { state.page = 1; loadMassTable(); } });
     $("searchInput").addEventListener("input", () => {
       clearTimeout(window.searchTimer);
