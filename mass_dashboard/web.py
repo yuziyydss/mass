@@ -197,6 +197,9 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
 </body></html>""")
                 elif path == "/api/summary":
                     self._send_json(storage.get_summary(config.db_path, qs.get("date", [None])[0]))
+                elif path == "/api/integrity":
+                    from .quality import db_integrity
+                    self._send_json(db_integrity(config.db_path))
                 elif path == "/api/health":
                     from .quality import check_data_freshness
                     fresh = check_data_freshness(config.db_path)

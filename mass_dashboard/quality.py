@@ -67,3 +67,27 @@ def check_data_freshness(db_path: Path, max_stale_days: int = 3) -> Optional[tup
     return None
 
 
+
+
+def db_integrity(db_path) -> dict:
+    """数据库完整性检查：各表行数、最新日期、缺失统计。"""
+    from . import storage
+    result = {"tables": {}, "alerts": []}
+    with storage._read_conn(db_path) as conn:
+        tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()]
+        for t in tables:
+            try:
+                n = conn.execute(f"SELECT COUNT(*) as n FROM {t}").fetchone()["n"]
+                latest = None
+                if "trade_date" in [c[1] for c in conn.execute(f"PRAGMA table_info({t})").fetchall()]:
+                    row = conn.execute(f"SELECT MAX(trade_date) AS d FROM {t}").fetchone()
+                    latest = row["d"] if row else None
+                result["tables"][t] = {"rows": n, "latest_date": latest}
+            except Exception:
+                pass
+    # 告警
+    if result["tables"].get("factor_mass_daily", {}).get("rows", 0) == 0:
+        result["alerts"].append(("ERROR", "factor_mass_daily 表为空"))
+    if result["tables"].get("daily_bars", {}).get("rows", 0) == 0:
+        result["alerts"].append(("ERROR", "daily_bars 表为空"))
+    return result
