@@ -463,6 +463,37 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2>回测引擎</h2>
+            <div class="subtle">按因子选 top-N 等权持仓，滚动换仓</div>
+          </div>
+          <div style="padding:14px 16px">
+            <div class="field-row">
+              <label class="subtle">因子:</label>
+              <select id="btFactor">
+                <option value="mass_zscore" selected>mass_zscore</option>
+                <option value="mass_neu">mass_neu</option>
+                <option value="mass_raw">mass_raw</option>
+              </select>
+              <label class="subtle">选股数:</label>
+              <input id="btN" type="number" value="50" min="5" max="500" style="width:70px">
+              <label class="subtle">持仓周期(交易日):</label>
+              <input id="btHold" type="number" value="5" min="1" max="20" style="width:70px">
+              <label class="subtle">方向:</label>
+              <select id="btDir" style="width:100px">
+                <option value="top" selected>选高因子</option>
+                <option value="bottom">选低因子</option>
+              </select>
+              <button id="backtestBtn" class="primary" style="height:30px">回测</button>
+              <span id="btStatus" class="subtle">点"回测"开始</span>
+            </div>
+            <div id="btStats" style="margin:10px 0"></div>
+            <div class="subtle" style="margin-bottom:6px">累计净值（组合 vs 基准 vs 超额）</div>
+            <canvas id="backtestChart" width="1140" height="280"></canvas>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2>高盛关注模块</h2>
             <div class="subtle">MASS × 高盛披露持仓</div>
           </div>
@@ -743,6 +774,47 @@
       }
     }
 
+    async function runBacktest() {
+      const params = new URLSearchParams({
+        factor: $("btFactor").value,
+        n: $("btN").value,
+        hold: $("btHold").value,
+        dir: $("btDir").value,
+      });
+      $("btStatus").textContent = "回测中…";
+      try {
+        const d = await getJson(`/api/backtest?${params}`);
+        if (d.error) { $("btStatus").textContent = "错误: " + d.error; return; }
+        const stats = `
+          <table style="width:100%;font-size:12px">
+            <tr><th>期数</th><th>日期范围</th><th>组合收益</th><th>基准收益</th><th>超额收益</th><th>夏普</th><th>最大回撤</th><th>胜率</th><th>平均持仓</th></tr>
+            <tr>
+              <td class="num">${d.n_periods}</td>
+              <td class="num">${d.date_range[0]}~${d.date_range[1]}</td>
+              <td class="num ${cls(d.total_return)}">${(d.total_return*100).toFixed(2)}%</td>
+              <td class="num">${d.benchmark_return!=null?(d.benchmark_return*100).toFixed(2)+'%':'-'}</td>
+              <td class="num ${cls(d.excess_return)}">${(d.excess_return*100).toFixed(2)}%</td>
+              <td class="num ${cls(d.sharpe)}">${d.sharpe!=null?d.sharpe:'-'}</td>
+              <td class="num neg">${(d.max_drawdown*100).toFixed(2)}%</td>
+              <td class="num">${(d.win_rate*100).toFixed(0)}%</td>
+              <td class="num">${d.avg_holdings}</td>
+            </tr>
+          </table>`;
+        $("btStats").innerHTML = stats;
+        $("btStatus").textContent = `完成：${d.n_periods}个换仓期`;
+        // 画累计净值曲线：组合/基准/超额
+        if (d.portfolio_cum && d.portfolio_cum.length) {
+          const series = [d.portfolio_cum];
+          const colors = ["#0d7c66"];
+          if (d.benchmark_cum && d.benchmark_cum.length) { series.push(d.benchmark_cum); colors.push("#6b746f"); }
+          series.push(d.excess_cum); colors.push("#c45a2d");
+          drawLineChart("backtestChart", series, colors, ["组合","基准","超额"]);
+        }
+      } catch (e) {
+        $("btStatus").textContent = "错误: " + e.message;
+      }
+    }
+
     async function loadIndustry() {
       const data = await getJson(`/api/industry?date=${selectedDate()}`);
       const rows = (data.rows || []).slice(0, 18);
@@ -816,6 +888,7 @@
     $("directionSelect").addEventListener("change", () => { state.page = 1; loadMassTable(); });
     $("searchBtn").addEventListener("click", () => { state.page = 1; loadMassTable(); });
     if ($("factorAnalyzeBtn")) $("factorAnalyzeBtn").addEventListener("click", () => loadFactorAnalysis());
+    if ($("backtestBtn")) $("backtestBtn").addEventListener("click", () => runBacktest());
     $("searchInput").addEventListener("keydown", (event) => { if (event.key === "Enter") { state.page = 1; loadMassTable(); } });
     $("searchInput").addEventListener("input", () => {
       clearTimeout(window.searchTimer);

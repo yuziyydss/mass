@@ -18,6 +18,7 @@ from . import storage
 from .config import AppConfig
 from .scheduler import DashboardScheduler
 from . import factor_analysis
+from . import backtest
 
 LOGGER = logging.getLogger("mass_dashboard.web")
 
@@ -213,6 +214,16 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                         factor_analysis.analyze_factor(
                             config.db_path,
                             factor_col=qs.get("factor", ["mass_zscore"])[0],
+                        )
+                    )
+                elif path == "/api/backtest":
+                    self._send_json(
+                        backtest.run_backtest(
+                            config.db_path,
+                            factor_col=qs.get("factor", ["mass_zscore"])[0],
+                            top_n=int(qs.get("n", ["50"])[0]),
+                            hold_days=int(qs.get("hold", ["5"])[0]),
+                            direction=qs.get("dir", ["top"])[0],
                         )
                     )
                 else:
