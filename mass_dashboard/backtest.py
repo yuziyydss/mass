@@ -111,12 +111,22 @@ def run_backtest(
         if valid.sum() == 0:
             continue
         stock_rets = (p1[valid] / p0[valid] - 1)
-        # 权重：equal=等权, factor=按因子值加权(softmax归一化)
+        # 权重：equal=等权, factor=按因子值加权(softmax), inv_vol=逆波动率加权
         if weight == "factor":
             f_vals = factor_panel.loc[date, valid.index].astype(float)
             exp_vals = np.exp(f_vals - f_vals.max())
             w_series = exp_vals / exp_vals.sum()
             w = w_series
+            port_ret = float((stock_rets * w).sum())
+        elif weight == "inv_vol":
+            # 逆波动率加权：用选股过去收益的std倒数加权(低波动给高权重)
+            selected_prices = close_panel.loc[date:next_date, valid.index]
+            rets = selected_prices.pct_change(fill_method=None).dropna()
+            vols = rets.std()
+            vols = vols.replace(0, np.nan).fillna(vols.mean())
+            inv = 1.0 / vols
+            w = inv / inv.sum()
+            w = w.reindex(valid.index).fillna(0)
             port_ret = float((stock_rets * w).sum())
         else:
             w = pd.Series(1.0/len(valid), index=valid.index)
