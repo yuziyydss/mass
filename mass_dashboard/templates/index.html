@@ -42,6 +42,14 @@
       box-shadow: 0 1px 0 rgba(0,0,0,.02);
     }
 
+    body.dark { --bg:#14171a; --ink:#e6ece6; --muted:#8a948f; --line:#2a312c; --line-soft:#222825; --panel:#1c2120; --soft:#222825; --shadow:0 1px 3px rgba(0,0,0,.3); }
+    body.dark header { background:linear-gradient(180deg,#1c2120,#161a18); }
+    body.dark .filters, body.dark .pagination { background:#161a18; }
+    body.dark th { background:#161a18; }
+    body.dark tbody tr:nth-child(even) td { background:#1a1f1d; }
+    body.dark tbody tr:hover td { background:#23302a; }
+    body.dark input, body.dark select { background:#222825; color:#e6ece6; }
+
     .topbar {
       display: flex;
       align-items: center;
@@ -323,6 +331,7 @@
         <div class="subtle">每日 {{ run_time }}（{{ timezone }}）自动运行 · 当前数据日 <span id="currentDate">{{ latest_date or "暂无" }}</span></div>
       </div>
       <div>
+        <button id="themeBtn" style="padding:0 10px">🌙</button>
         <button id="importBtn">导入历史 CSV</button>
         <button id="runBtn" class="primary">立即运行</button>
       </div>
@@ -1008,6 +1017,13 @@
       if (name === "screen" && !state.loaded.screen) { loadWeekFlow(); loadBottom(); state.loaded.screen = true; }
     }
     document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
+    // 暗色模式
+    if ($("themeBtn")) $("themeBtn").addEventListener("click", () => {
+      document.body.classList.toggle("dark");
+      $("themeBtn").textContent = document.body.classList.contains("dark") ? "☀️" : "🌙";
+      try { localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light"); } catch(e) {}
+    });
+    try { if (localStorage.getItem("theme") === "dark") { document.body.classList.add("dark"); $("themeBtn").textContent = "☀️"; } } catch(e) {}
 
     async function refreshMain(resetPage = false) {
       if (resetPage) state.page = 1;
