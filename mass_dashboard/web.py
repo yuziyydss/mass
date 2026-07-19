@@ -201,6 +201,13 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                         self._send_json({"error": "需要 code 和 tushare token"})
                     else:
                         self._send_json(financial.fetch_financial(_pro, code))
+                elif path == "/api/watchlist":
+                    action = qs.get("action", ["get"])[0]
+                    if action == "delete":
+                        code = qs.get("code", [""])[0]
+                        self._send_json({"ok": storage.remove_from_watchlist(config.db_path, code)})
+                    else:
+                        self._send_json({"rows": storage.list_watchlist(config.db_path)})
                 elif path == "/api/jobs":
                     self._send_json({"rows": storage.recent_jobs(config.db_path)})
                 elif path == "/api/progress":
@@ -274,6 +281,14 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                 elif parsed.path == "/api/import":
                     count = storage.import_mass_csvs(config.db_path, config.exports_dir)
                     self._send_json({"ok": True, "imported_rows": count})
+                elif parsed.path == "/api/watchlist":
+                    code = qs.get("code", [""])[0]
+                    name = qs.get("name", [""])[0]
+                    if not code:
+                        self._send_json({"error": "需要 code"}, status=400)
+                    else:
+                        storage.add_to_watchlist(config.db_path, code, name=name)
+                        self._send_json({"ok": True})
                 else:
                     self._send_json({"error": "not found"}, status=404)
             except Exception as err:

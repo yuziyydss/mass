@@ -384,6 +384,24 @@
             <button id="forceRunBtn">补跑日期</button>
           </div>
         </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>自选股</h2>
+            <div class="subtle">收藏关注的股票</div>
+          </div>
+          <div style="padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <input id="wlCode" placeholder="代码 如 600519.SH" style="width:160px">
+            <input id="wlName" placeholder="名称(可选)" style="width:140px">
+            <button id="wlAddBtn" class="primary" style="height:30px">加入</button>
+          </div>
+          <div class="table-wrap" style="max-height:300px">
+            <table>
+              <thead><tr><th>代码</th><th>名称</th><th>加入时间</th><th>操作</th></tr></thead>
+              <tbody id="wlBody"></tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <!-- ── MASS 数据表 Tab ── -->
@@ -923,6 +941,29 @@
         : '<div class="empty-state">暂无任务记录</div>';
     }
 
+    async function loadWatchlist() {
+      const data = await getJson("/api/watchlist");
+      const rows = data.rows || [];
+      $("wlBody").innerHTML = rows.length
+        ? rows.map(r => `<tr data-code="${r.code}">
+            <td>${r.code}</td><td>${r.name || ""}</td>
+            <td class="subtle">${r.added_at || ""}</td>
+            <td><button class="wl-del" data-code="${r.code}" style="height:24px;font-size:12px">删除</button></td>
+          </tr>`).join("")
+        : emptyState("暂无自选股");
+      document.querySelectorAll("#wlBody tr[data-code]").forEach(tr => {
+        tr.addEventListener("click", e => {
+          if (e.target.classList.contains("wl-del")) return;
+          window.location.href = `/stock?code=${encodeURIComponent(tr.dataset.code)}`;
+        });
+      });
+      document.querySelectorAll(".wl-del").forEach(btn => btn.addEventListener("click", async e => {
+        e.stopPropagation();
+        await getJson(`/api/watchlist?action=delete&code=${encodeURIComponent(btn.dataset.code)}`);
+        await loadWatchlist();
+      }));
+    }
+
     async function loadProgress() {
       const data = await getJson("/api/progress");
       const p = data.progress;
@@ -948,7 +989,7 @@
       if (resetPage) state.page = 1;
       await loadSummary();
       // 总览 tab 的数据
-      await Promise.all([loadIndustry(), loadJobs(), loadProgress()]);
+      await Promise.all([loadIndustry(), loadJobs(), loadProgress(), loadWatchlist()]);
       // 当前激活的其他 tab 按需刷新
       const active = document.querySelector(".tab.active").dataset.tab;
       if (active === "mass") await loadMassTable();
@@ -966,6 +1007,14 @@
     $("searchBtn").addEventListener("click", () => { state.page = 1; loadMassTable(); });
     if ($("factorAnalyzeBtn")) $("factorAnalyzeBtn").addEventListener("click", () => loadFactorAnalysis());
     if ($("backtestBtn")) $("backtestBtn").addEventListener("click", () => runBacktest());
+    if ($("wlAddBtn")) $("wlAddBtn").addEventListener("click", async () => {
+      const code = $("wlCode").value.trim();
+      const name = $("wlName").value.trim();
+      if (!code) return;
+      await getJson(`/api/watchlist?code=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}`, { method: "POST" });
+      $("wlCode").value = ""; $("wlName").value = "";
+      await loadWatchlist();
+    });
     $("searchInput").addEventListener("keydown", (event) => { if (event.key === "Enter") { state.page = 1; loadMassTable(); } });
     $("searchInput").addEventListener("input", () => {
       clearTimeout(window.searchTimer);

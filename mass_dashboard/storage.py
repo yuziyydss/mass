@@ -299,6 +299,13 @@ def init_db(db_path: Path) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_bottom_conditions_met
             ON bottom_conditions (trade_date, conditions_met DESC);
+
+            CREATE TABLE IF NOT EXISTS watchlist (
+                code TEXT PRIMARY KEY,
+                name TEXT,
+                added_at TEXT NOT NULL,
+                note TEXT
+            );
             """
         )
     _migrate(db_path)
@@ -1312,3 +1319,33 @@ def load_kline(
                 except (TypeError, ValueError):
                     pass
     return items
+
+
+# ── 自选股 watchlist ──
+
+
+def add_to_watchlist(db_path: Path, code: str, name: str = "", note: str = "") -> bool:
+    with connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO watchlist (code, name, added_at, note) VALUES (?, ?, ?, ?)",
+            (str(code), name or "", utc_now(), note),
+        )
+    return True
+
+
+def remove_from_watchlist(db_path: Path, code: str) -> bool:
+    with connect(db_path) as conn:
+        cur = conn.execute("DELETE FROM watchlist WHERE code=?", (str(code),))
+        return cur.rowcount > 0
+
+
+def list_watchlist(db_path: Path) -> list[dict]:
+    with _read_conn(db_path) as conn:
+        rows = conn.execute("SELECT * FROM watchlist ORDER BY added_at DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def in_watchlist(db_path: Path, code: str) -> bool:
+    with _read_conn(db_path) as conn:
+        row = conn.execute("SELECT 1 FROM watchlist WHERE code=?", (str(code),)).fetchone()
+        return row is not None
