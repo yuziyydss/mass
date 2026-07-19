@@ -391,7 +391,7 @@
             </div>
 
             <div class="panel">
-              <div class="panel-head"><h2>任务日志</h2></div>
+              <div class="panel-head"><h2>任务日志</h2><div class="subtle" id="jobStats"></div></div>
               <div class="jobs" id="jobsBox"></div>
             </div>
           </div>
@@ -1060,6 +1060,12 @@
     async function loadJobs() {
       const data = await getJson("/api/jobs");
       const rows = (data.rows || []).slice(0, 18);
+      // 统计
+      const all = data.rows || [];
+      const counts = {};
+      all.forEach(j => counts[j.status] = (counts[j.status]||0)+1);
+      const statsHtml = Object.entries(counts).map(([s,c]) => `<span class="badge ${s}">${s}:${c}</span>`).join(" ");
+      $("jobStats").innerHTML = statsHtml || "";
       $("jobsBox").innerHTML = rows.length
         ? rows.map(job => `
             <div class="job">
