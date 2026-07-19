@@ -747,3 +747,34 @@ def factor_correlation(db_path, factor_names: list[str]) -> dict:
             row.append(round(corr, 3) if corr is not None and not np.isnan(corr) else None)
         matrix.append(row)
     return {"names": names, "matrix": matrix, "n_stocks": len(codes), "date": latest}
+
+
+def rolling_ic_stability(db_path, factor_col: str = "mass_zscore", forward_days: int = 5, window: int = 5) -> dict:
+    """滚动IC稳定性：滚动window期IC的均值/标准差，看IC是否稳定。
+    返回 IC序列 + 滚动均值 + 滚动标准差。
+    """
+    import numpy as np
+    panel = storage.load_factor_panel(db_path, factor_col=factor_col)
+    if panel.empty:
+        return {"error": "因子面板为空"}
+    close_panel = storage.load_close_panel(db_path, panel.index[0], panel.index[-1])
+    common = panel.index.intersection(close_panel.index).tolist()
+    if len(common) < 3:
+        return {"error": "公共日期不足"}
+    fwd = compute_forward_returns(close_panel.loc[common], [forward_days])
+    ic = compute_ic_series(panel.loc[common], fwd)
+    if forward_days not in ic or ic[forward_days].empty:
+        return {"error": "IC不足"}
+    ics = ic[forward_days]["ic"]
+    rolling_mean = ics.rolling(window).mean()
+    rolling_std = ics.rolling(window).std()
+    return {
+        "factor": factor_col,
+        "forward_days": forward_days,
+        "window": window,
+        "dates": ics.index.tolist(),
+        "ic": [round(float(x), 4) for x in ics.tolist()],
+        "rolling_mean": [round(float(x), 4) if pd.notna(x) else None for x in rolling_mean.tolist()],
+        "rolling_std": [round(float(x), 4) if pd.notna(x) else None for x in rolling_std.tolist()],
+        "stability": round(float(ics.mean() / ics.std(ddof=1) * np.sqrt(252)), 4) if ics.std(ddof=1) > 0 else None,
+    }
