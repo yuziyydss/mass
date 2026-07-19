@@ -448,16 +448,18 @@
               <span id="factorStatus" class="subtle">点"分析"开始计算</span>
             </div>
             <div id="factorSummary" style="margin-bottom:12px"></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+              <div>
+                <div class="subtle" style="margin-bottom:6px">IC 衰减曲线（各周期 IC 均值）</div>
+                <canvas id="icDecayChart" width="560" height="160"></canvas>
+              </div>
               <div>
                 <div class="subtle" style="margin-bottom:6px">IC 时序（5日前瞻）</div>
-                <canvas id="icChart" width="560" height="240"></canvas>
-              </div>
-              <div>
-                <div class="subtle" style="margin-bottom:6px">分层累计净值</div>
-                <canvas id="quantileChart" width="560" height="240"></canvas>
+                <canvas id="icChart" width="560" height="160"></canvas>
               </div>
             </div>
+            <div class="subtle" style="margin-bottom:6px">分层累计净值</div>
+            <canvas id="quantileChart" width="1140" height="200"></canvas>
           </div>
         </section>
 
@@ -744,6 +746,51 @@
       ctx.fillText(minY.toFixed(2), 4, h - padB);
     }
 
+    function drawBarChart(canvasId, labels, values, colors) {
+      const canvas = $(canvasId);
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      const vals = values.filter(v => v != null && Number.isFinite(v));
+      if (!vals.length) return;
+      const minY = Math.min(0, ...vals), maxY = Math.max(0, ...vals);
+      const span = Math.max(0.001, maxY - minY);
+      const padL = 40, padR = 14, padT = 14, padB = 30;
+      const n = labels.length;
+      const cw = (w - padL - padR) / n;
+      const yAt = v => padT + (1 - (v - minY) / span) * (h - padT - padB);
+      // 网格
+      ctx.strokeStyle = "#eef1ee"; ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + i * (h - padT - padB) / 4;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      }
+      // 0线
+      const y0 = yAt(0);
+      ctx.strokeStyle = "#999"; ctx.beginPath(); ctx.moveTo(padL, y0); ctx.lineTo(w - padR, y0); ctx.stroke();
+      // 柱子
+      labels.forEach((lbl, i) => {
+        const v = values[i];
+        if (v == null || !Number.isFinite(v)) return;
+        const x = padL + i * cw + cw * 0.2;
+        const bw = cw * 0.6;
+        const yv = yAt(v);
+        const color = v >= 0 ? (colors[i % colors.length] || "#0d7c66") : "#b42318";
+        ctx.fillStyle = color;
+        if (v >= 0) ctx.fillRect(x, yv, bw, y0 - yv);
+        else ctx.fillRect(x, y0, bw, yv - y0);
+        // 数值标签
+        ctx.fillStyle = "#17201b"; ctx.font = "10px Segoe UI";
+        ctx.textAlign = "center";
+        ctx.fillText(v.toFixed(3), x + bw / 2, v >= 0 ? yv - 3 : yv + 11);
+        ctx.textAlign = "start";
+        // X轴标签
+        ctx.fillStyle = "#6b746f"; ctx.font = "10px Segoe UI";
+        ctx.fillText(lbl, x + bw / 2 - 8, h - 10);
+      });
+    }
+
     async function loadFactorAnalysis() {
       const factor = $("factorSelect") ? $("factorSelect").value : "mass_zscore";
       $("factorStatus").textContent = "计算中…";
@@ -758,6 +805,13 @@
         html += "</table>";
         $("factorSummary").innerHTML = html;
         $("factorStatus").textContent = `数据范围: ${data.date_range[0]} ~ ${data.date_range[1]}（共 ${data.n_dates} 期）`;
+        // IC 衰减柱状图
+        if (sm.length) {
+          drawBarChart("icDecayChart",
+            sm.map(s => s.forward_days + "日"),
+            sm.map(s => s.ic_mean),
+            ["#0d7c66","#067647","#d97706","#c45a2d"]);
+        }
         if (data.ic_values && data.ic_values.length) {
           drawLineChart("icChart", [data.ic_values, data.cum_ic], ["#0d7c66", "#c45a2d"], ["IC", "cumIC"]);
         }
