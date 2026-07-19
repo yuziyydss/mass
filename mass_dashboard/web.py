@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hmac
 import json
 import logging
 import math
@@ -10,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import numpy as np
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from . import storage
@@ -20,13 +22,8 @@ LOGGER = logging.getLogger("mass_dashboard.web")
 
 
 def json_default(value):
-    try:
-        import numpy as np
-
-        if isinstance(value, (np.integer, np.floating)):
-            return value.item()
-    except Exception:
-        pass
+    if isinstance(value, (np.integer, np.floating)):
+        return value.item()
     return str(value)
 
 
@@ -37,13 +34,8 @@ def json_safe(value):
         return [json_safe(item) for item in value]
     if isinstance(value, float) and not math.isfinite(value):
         return None
-    try:
-        import numpy as np
-
-        if isinstance(value, np.generic):
-            return json_safe(value.item())
-    except Exception:
-        pass
+    if isinstance(value, np.generic):
+        return json_safe(value.item())
     return value
 
 
@@ -71,7 +63,11 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
             except Exception:
                 return False
             username, _, password = decoded.partition(":")
-            return username == config.app_username and password == config.app_password
+            # 常量时间比较，避免时序侧信道
+            return (
+                username == config.app_username
+                and hmac.compare_digest(password, config.app_password)
+            )
 
         def _require_auth(self) -> bool:
             if self._is_authorized():

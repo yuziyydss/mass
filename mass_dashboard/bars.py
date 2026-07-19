@@ -138,26 +138,33 @@ def calculate_mass_from_cache(
     bars["low"] = pd.to_numeric(bars["low"], errors="coerce")
     bars = bars.dropna(subset=["code", "trade_date", "high", "low"])
     bars = bars.sort_values(["code", "trade_date"])
-    groups = {code: hist for code, hist in bars.groupby("code", sort=False)}
+
+    # 一次性按 code 分组算出每只股票的 mass_raw，避免逐只调用 + 逐只建 dict。
+    # calc_mass_factor 取每组的末值，与按 itertuples 逐只调用的结果数学等价。
+    mass_series = bars.groupby("code", sort=False, group_keys=False)[["high", "low"]].apply(
+        mass_t.calc_mass_factor
+    )
+    mass_by_code = mass_series.to_dict() if isinstance(mass_series, pd.Series) else {}
+
+    base_meta = base[["code", "name", "industry", "total_mkt_cap", "pe"]].copy()
+    base_meta["code"] = base_meta["code"].astype(str)
+    base_meta["mass_raw"] = base_meta["code"].map(mass_by_code)
 
     rows: list[dict] = []
-    total = len(base)
-    for index, row in enumerate(base.itertuples(index=False), start=1):
-        code = str(row.code)
-        hist = groups.get(code)
-        val = mass_t.calc_mass_factor(hist) if hist is not None else None
+    total = len(base_meta)
+    for index, row in enumerate(base_meta.itertuples(index=False), start=1):
         rows.append(
             {
-                "code": code,
+                "code": row.code,
                 "name": getattr(row, "name", None),
                 "industry": getattr(row, "industry", None),
                 "total_mkt_cap": getattr(row, "total_mkt_cap", None),
                 "pe": getattr(row, "pe", None),
-                "mass_raw": val,
+                "mass_raw": row.mass_raw,
             }
         )
         if progress_callback and index % cfg.progress_save_every == 0:
-            progress_callback(index, total, code, len(rows))
+            progress_callback(index, total, row.code, len(rows))
 
     if progress_callback:
         progress_callback(total, total, "", len(rows))

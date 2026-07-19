@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import datetime
+import threading
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Iterator, Optional, Sequence
 
 import pandas as pd
 
@@ -49,12 +51,51 @@ DAILY_BAR_NUMERIC_COLUMNS = [
 ]
 
 
+# 线程本地只读连接：web 每个 HTTP 请求线程复用同一连接，避免反复 open/close。
+# 写路径仍走 connect()（每次独立短连接，配合 WAL 避免长事务持锁）。
+_read_conn_pool = threading.local()
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
+
+
+@contextmanager
+def _read_conn(db_path: Path) -> Iterator[sqlite3.Connection]:
+    """复用线程本地只读连接。db_path 变化时（测试/多库）自动切换。"""
+    cached = getattr(_read_conn_pool, "conn", None)
+    cached_path = getattr(_read_conn_pool, "path", None)
+    if cached is not None and cached_path == str(db_path):
+        yield cached
+        return
+
+    if cached is not None:
+        try:
+            cached.close()
+        except Exception:
+            pass
+    conn = connect(db_path)
+    # 只读连接走 WAL 的 read 隔离，不开写事务
+    conn.execute("PRAGMA query_only=1")
+    _read_conn_pool.conn = conn
+    _read_conn_pool.path = str(db_path)
+    yield conn
+
+
+def close_read_connection() -> None:
+    """关闭当前线程的只读连接（仅在需要时手动调用）。"""
+    conn = getattr(_read_conn_pool, "conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        _read_conn_pool.conn = None
+        _read_conn_pool.path = None
 
 
 def init_db(db_path: Path) -> None:
@@ -140,7 +181,7 @@ def init_db(db_path: Path) -> None:
 
 
 def utc_now() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def clean_value(value):
@@ -233,7 +274,7 @@ def daily_bar_counts(db_path: Path, trade_dates: Sequence[str]) -> dict[str, int
         return {}
 
     counts: dict[str, int] = {}
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         for part in chunked(dates):
             placeholders = ",".join(["?"] * len(part))
             rows = conn.execute(
@@ -266,7 +307,7 @@ def load_daily_bars(
     if codes:
         code_list = [str(code) for code in codes]
         frames = []
-        with connect(db_path) as conn:
+        with _read_conn(db_path) as conn:
             for part in chunked(code_list):
                 placeholders = ",".join(["?"] * len(part))
                 sql = f"""
@@ -278,7 +319,7 @@ def load_daily_bars(
                 frames.append(pd.read_sql_query(sql, conn, params=[start_date, end_date] + part))
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["code", "trade_date", "high", "low"])
 
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         return pd.read_sql_query(
             f"""
             SELECT code, trade_date, high, low
@@ -353,7 +394,7 @@ def update_job_progress(
 
 
 def latest_progress(db_path: Path) -> Optional[dict]:
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         row = conn.execute(
             """
             SELECT p.*, r.status, r.started_at, r.finished_at, r.row_count, r.error_message
@@ -373,7 +414,7 @@ def latest_progress(db_path: Path) -> Optional[dict]:
 
 
 def has_successful_run(db_path: Path, job_name: str, trade_date: str) -> bool:
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         row = conn.execute(
             """
             SELECT 1 FROM job_runs
@@ -398,13 +439,13 @@ def replace_alerts(db_path: Path, trade_date: str, alerts: Iterable[tuple[str, s
 
 
 def latest_trade_date(db_path: Path) -> Optional[str]:
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         row = conn.execute("SELECT MAX(trade_date) AS trade_date FROM factor_mass_daily").fetchone()
         return row["trade_date"] if row and row["trade_date"] else None
 
 
 def list_trade_dates(db_path: Path, limit: int = 120) -> list[dict]:
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         rows = conn.execute(
             """
             SELECT trade_date, COUNT(*) AS row_count
@@ -423,7 +464,7 @@ def get_summary(db_path: Path, trade_date: Optional[str] = None) -> dict:
     if not trade_date:
         return {"trade_date": None, "row_count": 0}
 
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         row = conn.execute(
             """
             SELECT
@@ -478,7 +519,7 @@ def query_mass(
     order = "ASC" if direction.lower() == "asc" else "DESC"
     params.append(max(1, min(limit, 1000)))
 
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         rows = conn.execute(
             f"""
             SELECT *
@@ -521,7 +562,7 @@ def query_mass_page(
     order = "ASC" if direction.lower() == "asc" else "DESC"
     offset = (page - 1) * per_page
 
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         total_row = conn.execute(
             f"SELECT COUNT(*) AS total FROM factor_mass_daily WHERE {where_sql}",
             params,
@@ -554,7 +595,7 @@ def list_industries(db_path: Path, trade_date: Optional[str] = None) -> list[str
     if not trade_date:
         return []
 
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         rows = conn.execute(
             """
             SELECT DISTINCT industry
@@ -568,7 +609,7 @@ def list_industries(db_path: Path, trade_date: Optional[str] = None) -> list[str
 
 
 def stock_profile(db_path: Path, code: str) -> Optional[dict]:
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         row = conn.execute(
             """
             SELECT *
@@ -587,7 +628,7 @@ def industry_stats(db_path: Path, trade_date: Optional[str] = None) -> list[dict
     if not trade_date:
         return []
 
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         rows = conn.execute(
             """
             SELECT
@@ -608,7 +649,7 @@ def industry_stats(db_path: Path, trade_date: Optional[str] = None) -> list[dict
 
 
 def stock_history(db_path: Path, code: str) -> list[dict]:
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         rows = conn.execute(
             """
             SELECT trade_date, code, name, industry, mass_zscore, mass_raw, mass_neu
@@ -622,7 +663,7 @@ def stock_history(db_path: Path, code: str) -> list[dict]:
 
 
 def recent_jobs(db_path: Path, limit: int = 50) -> list[dict]:
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         rows = conn.execute(
             """
             SELECT *
@@ -636,7 +677,7 @@ def recent_jobs(db_path: Path, limit: int = 50) -> list[dict]:
 
 
 def recent_alerts(db_path: Path, limit: int = 50) -> list[dict]:
-    with connect(db_path) as conn:
+    with _read_conn(db_path) as conn:
         rows = conn.execute(
             """
             SELECT *
@@ -657,6 +698,23 @@ def read_csv_with_fallback(csv_file: Path) -> pd.DataFrame:
         except UnicodeDecodeError as err:
             last_error = err
     raise RuntimeError(f"无法读取 CSV 编码: {csv_file}") from last_error
+
+
+# 高盛 CSV 内容缓存：key=(path, mtime, size)，避免每次 /api/focus 请求都重读文件。
+_goldman_csv_cache: dict[tuple, pd.DataFrame] = {}
+
+
+def _load_goldman_csv_cached(goldman_file: Path) -> pd.DataFrame:
+    stat = goldman_file.stat()
+    cache_key = (str(goldman_file), int(stat.st_mtime), int(stat.st_size))
+    cached = _goldman_csv_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    df = read_csv_with_fallback(goldman_file)
+    # 淘汰过期条目，避免目录换文件后缓存无限增长
+    _goldman_csv_cache.clear()
+    _goldman_csv_cache[cache_key] = df
+    return df
 
 
 def latest_goldman_file(goldman_dir: Path) -> Optional[Path]:
@@ -686,7 +744,7 @@ def focus_with_goldman(
 
     match = re.search(r"goldman_positions_(\d{8})\.csv$", goldman_file.name, re.IGNORECASE)
     goldman_period = match.group(1) if match else ""
-    goldman = read_csv_with_fallback(goldman_file)
+    goldman = _load_goldman_csv_cached(goldman_file)
     if goldman.empty or "code" not in goldman.columns:
         return {"trade_date": trade_date, "goldman_period": goldman_period, "rows": []}
 
@@ -695,8 +753,8 @@ def focus_with_goldman(
     goldman["hold_amount"] = pd.to_numeric(goldman.get("hold_amount"), errors="coerce")
     goldman["hold_ratio"] = pd.to_numeric(goldman.get("hold_ratio"), errors="coerce")
 
-    prev_date = get_summary(db_path, trade_date).get("previous_trade_date")
-    with connect(db_path) as conn:
+    # 单连接一次性取当前交易日 + 上一个交易日的数据，避免重复开连接和 get_summary 往返
+    with _read_conn(db_path) as conn:
         mass = pd.read_sql_query(
             """
             SELECT trade_date, code, name, industry, mass_raw, mass_zscore, total_mkt_cap, pe
@@ -706,15 +764,24 @@ def focus_with_goldman(
             conn,
             params=(trade_date,),
         )
-        prev = pd.read_sql_query(
-            """
-            SELECT code, mass_zscore AS previous_mass_zscore
-            FROM factor_mass_daily
-            WHERE trade_date=?
-            """,
-            conn,
-            params=(prev_date,),
-        ) if prev_date else pd.DataFrame(columns=["code", "previous_mass_zscore"])
+        prev_date_row = conn.execute(
+            "SELECT MAX(trade_date) AS prev_date FROM factor_mass_daily WHERE trade_date < ?",
+            (trade_date,),
+        ).fetchone()
+        prev_date = prev_date_row["prev_date"] if prev_date_row else None
+        prev = (
+            pd.read_sql_query(
+                """
+                SELECT code, mass_zscore AS previous_mass_zscore
+                FROM factor_mass_daily
+                WHERE trade_date=?
+                """,
+                conn,
+                params=(prev_date,),
+            )
+            if prev_date
+            else pd.DataFrame(columns=["code", "previous_mass_zscore"])
+        )
 
     merged = mass.merge(goldman, on="code", how="inner")
     if merged.empty:

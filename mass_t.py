@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from __future__ import annotations
 """
 计算全市场 A 股的梅斯线（MASS）因子
 数据源：Tushare Pro
 步骤：获取行情 -> 计算 MASS -> 中位数去极值 -> 行业+市值对数中性化 -> zscore
 """
+from __future__ import annotations
 
 import argparse
 import logging
