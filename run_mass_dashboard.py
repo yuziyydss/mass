@@ -21,6 +21,15 @@ def setup_logging(verbose: bool = False) -> None:
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%H:%M:%S",
     )
+    # 落文件（便于 /api/logs 查看）
+    from pathlib import Path
+    from mass_dashboard.config import AppConfig
+    cfg = AppConfig.load()
+    cfg.data_dir.mkdir(parents=True, exist_ok=True)
+    fh = logging.FileHandler(cfg.data_dir / "mass_dashboard.log", encoding="utf-8")
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s", "%Y-%m-%d %H:%M:%S"))
+    logging.getLogger().addHandler(fh)
 
 
 def parse_args() -> argparse.Namespace:

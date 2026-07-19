@@ -214,6 +214,14 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
 </body></html>""")
                 elif path == "/api/summary":
                     self._send_json(storage.get_summary(config.db_path, qs.get("date", [None])[0]))
+                elif path == "/api/logs":
+                    n = int(qs.get("n", ["100"])[0])
+                    log_file = config.data_dir / "mass_dashboard.log"
+                    if not log_file.exists():
+                        self._send_json({"error": "无日志文件"})
+                        return
+                    lines = log_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    self._send_json({"lines": lines[-n:]})
                 elif path == "/api/missing-dates":
                     from .bars import trade_dates_for_window
                     import mass_t
