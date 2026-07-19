@@ -344,6 +344,8 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     self._send_json({"rows": factor_analysis.compare_factors(config.db_path, specs)})
                 elif path == "/api/factor-distribution":
                     self._send_json(factor_analysis.factor_distribution(config.db_path, factor_col=qs.get("factor", ["mass_zscore"])[0]))
+                elif path == "/api/ic-heatmap":
+                    self._send_json(factor_analysis.ic_heatmap(config.db_path, factor_col=qs.get("factor", ["mass_zscore"])[0]))
                 elif path == "/api/portfolio":
                     import json as _j
                     comps_str = qs.get("components", ["mass_zscore:1:1,momentum_5:1:1,volatility_20:0.5:-1"])[0]

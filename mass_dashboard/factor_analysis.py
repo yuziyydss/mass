@@ -617,3 +617,35 @@ def build_portfolio(db_path, components: list[dict], top_n: int = 30) -> dict:
         "n_candidates": len(score),
         "top": top_list,
     }
+
+
+def ic_heatmap(db_path, factor_col: str = "mass_zscore", forward_days_list: list = None) -> dict:
+    """IC热力图:日期×前瞻周期。返回 {dates, periods, matrix}"""
+    if forward_days_list is None:
+        forward_days_list = [1, 5, 10, 20]
+    panel = storage.load_factor_panel(db_path, factor_col=factor_col)
+    if panel.empty:
+        return {"error": "因子面板为空"}
+    close_panel = storage.load_close_panel(db_path, panel.index[0], panel.index[-1])
+    common = panel.index.intersection(close_panel.index).tolist()
+    if len(common) < 3:
+        return {"error": "公共日期不足"}
+    fwd = compute_forward_returns(close_panel.loc[common], forward_days_list)
+    ic = compute_ic_series(panel.loc[common], fwd)
+    # matrix: dates × periods
+    all_dates = set()
+    for N in forward_days_list:
+        if N in ic and not ic[N].empty:
+            all_dates.update(ic[N].index.tolist())
+    dates = sorted(all_dates)
+    matrix = []
+    for d in dates:
+        row = []
+        for N in forward_days_list:
+            df = ic.get(N, pd.DataFrame())
+            if d in df.index:
+                row.append(round(float(df.loc[d, "ic"]), 4))
+            else:
+                row.append(None)
+        matrix.append(row)
+    return {"dates": dates, "periods": forward_days_list, "matrix": matrix}
