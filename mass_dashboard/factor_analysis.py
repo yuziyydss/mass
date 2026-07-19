@@ -528,3 +528,92 @@ def factor_returns(db_path, factors: list[str], forward_days: int = 5) -> list[d
         })
     results.sort(key=lambda x: abs(x.get("long_short_avg") or 0), reverse=True)
     return results
+
+
+def build_portfolio(db_path, components: list[dict], top_n: int = 30) -> dict:
+    """选股策略引擎:多因子加权综合评分,选top-N组合。
+    components: [{name, weight, sign}] sign=1表示正向因子(高=好),-1表示反向因子(低=好,如波动率/换手率)
+    返回 {date, scores: [{code, score, factors}], top: [...]}
+    """
+    from . import momentum
+    import numpy as np
+    # 加载各因子最新截面
+    panels = {}
+    for comp in components:
+        name = comp["name"]
+        if name.startswith("momentum"):
+            p = momentum.compute_momentum_panel(db_path, int(name.split("_")[1]))
+        elif name.startswith("volatility"):
+            p = momentum.compute_volatility_panel(db_path, int(name.split("_")[1]))
+        elif name.startswith("turnover"):
+            p = momentum.compute_turnover_panel(db_path, int(name.split("_")[1]))
+        elif name in ("mass_zscore","mass_neu","mass_raw"):
+            p = storage.load_factor_panel(db_path, name)
+        else:
+            continue
+        if not p.empty:
+            panels[name] = p
+
+    if not panels:
+        return {"error": "无可用因子"}
+    # 取所有因子公共的最新截面日
+    common_dates = None
+    for p in panels.values():
+        idx = set(p.index)
+        common_dates = idx if common_dates is None else common_dates & idx
+    if not common_dates:
+        return {"error": "因子无公共日期"}
+    latest = max(common_dates)
+
+    # 构建综合得分 DataFrame
+    score = None
+    factor_values = {}
+    for comp in components:
+        name = comp["name"]
+        if name not in panels:
+            continue
+        weight = comp.get("weight", 1.0)
+        sign = comp.get("sign", 1)
+        row = panels[name].loc[latest].dropna()
+        # 截面zscore标准化
+        mu, sd = row.mean(), row.std()
+        if sd == 0 or pd.isna(sd):
+            continue
+        z = (row - mu) / sd
+        z = z * sign * weight
+        if score is None:
+            score = z.copy()
+        else:
+            score = score.add(z, fill_value=0)
+        factor_values[name] = row
+
+    if score is None or score.empty:
+        return {"error": "无法计算综合得分"}
+
+    # 取top_n
+    top = score.nlargest(top_n)
+    with storage._read_conn(db_path) as conn:
+        if not top.empty:
+            placeholders = ",".join(["?"]*len(top.index))
+            meta = pd.read_sql_query(
+                f"SELECT code, name, industry FROM factor_mass_daily WHERE trade_date=? AND code IN ({placeholders})",
+                conn, params=[latest]+list(top.index),
+            ).set_index("code") if len(top) > 0 else pd.DataFrame()
+        else:
+            meta = pd.DataFrame()
+
+    top_list = []
+    for code, sc in top.items():
+        m = meta.loc[code] if code in meta.index else {}
+        top_list.append({
+            "code": code,
+            "score": round(float(sc), 4),
+            "name": m.get("name","") if isinstance(m, pd.Series) else "",
+            "industry": m.get("industry","") if isinstance(m, pd.Series) else "",
+            "factors": {n: round(float(factor_values[n].get(code, float("nan"))), 4) for n in panels if code in factor_values[n].index},
+        })
+    return {
+        "date": latest,
+        "n_candidates": len(score),
+        "top": top_list,
+    }

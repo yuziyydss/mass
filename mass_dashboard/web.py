@@ -344,6 +344,15 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     self._send_json({"rows": factor_analysis.compare_factors(config.db_path, specs)})
                 elif path == "/api/factor-distribution":
                     self._send_json(factor_analysis.factor_distribution(config.db_path, factor_col=qs.get("factor", ["mass_zscore"])[0]))
+                elif path == "/api/portfolio":
+                    import json as _j
+                    comps_str = qs.get("components", ["mass_zscore:1:1,momentum_5:1:1,volatility_20:0.5:-1"])[0]
+                    comps = []
+                    for c in comps_str.split(","):
+                        parts = c.split(":")
+                        if len(parts) >= 1 and parts[0].strip():
+                            comps.append({"name": parts[0].strip(), "weight": float(parts[1]) if len(parts)>1 else 1.0, "sign": float(parts[2]) if len(parts)>2 else 1.0})
+                    self._send_json(factor_analysis.build_portfolio(config.db_path, comps, int(qs.get("n", ["30"])[0])))
                 elif path == "/api/factor-returns":
                     factors = qs.get("factors", ["mass_zscore,momentum_5,momentum_20,volatility_20,turnover_20"])[0].split(",")
                     self._send_json({"rows": factor_analysis.factor_returns(config.db_path, [f.strip() for f in factors], int(qs.get("days", ["5"])[0]))})
