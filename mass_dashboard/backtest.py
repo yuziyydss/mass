@@ -36,6 +36,7 @@ def run_backtest(
     direction: str = "top",  # top=选高因子, bottom=选低因子
     benchmark: str = "equal",  # equal=等权全市场基准
     cost_bps: float = 10.0,  # 单边交易成本(基点),换仓时扣除
+    weight: str = "equal",  # equal=等权, factor=按因子值加权
 ) -> dict:
     """按因子选股回测。
 
@@ -109,7 +110,15 @@ def run_backtest(
         if valid.sum() == 0:
             continue
         stock_rets = (p1[valid] / p0[valid] - 1)
-        port_ret = float(stock_rets.mean())
+        # 权重：equal=等权, factor=按因子值加权(softmax归一化)
+        if weight == "factor":
+            f_vals = factor_panel.loc[date, valid.index].astype(float)
+            # softmax归一化(正因子越高权重越大)
+            exp_vals = np.exp(f_vals - f_vals.max())
+            w = exp_vals / exp_vals.sum()
+            port_ret = float((stock_rets * w).sum())
+        else:
+            port_ret = float(stock_rets.mean())
         # 扣交易成本：每次换仓买卖双边，cost_bps基点
         port_ret -= 2 * cost_bps / 10000.0
         portfolio_returns.append(port_ret)
