@@ -1226,10 +1226,17 @@ def query_bottom_conditions(db_path: Path, trade_date: Optional[str] = None, min
 # ── 因子分析：面板数据加载（透视成 日期×股票 矩阵）──
 
 
+_close_panel_cache: dict = {}  # (start,end) -> DataFrame, 进程内缓存
+
+
 def load_close_panel(db_path: Path, start_date: str, end_date: str) -> pd.DataFrame:
     """加载收盘价面板：行=trade_date，列=code，值=close。
-    用于前瞻收益和因子分层回测。
+    用于前瞻收益和因子分层回测。带进程内缓存。
     """
+    key = (start_date, end_date)
+    cached = _close_panel_cache.get(key)
+    if cached is not None:
+        return cached
     with _read_conn(db_path) as conn:
         df = pd.read_sql_query(
             """
@@ -1243,13 +1250,16 @@ def load_close_panel(db_path: Path, start_date: str, end_date: str) -> pd.DataFr
             params=[start_date, end_date],
         )
     if df.empty:
+        _close_panel_cache[key] = pd.DataFrame()
         return pd.DataFrame()
     df["close"] = pd.to_numeric(df["close"], errors="coerce")
     df = df.dropna(subset=["close"])
     # 透视：行=日期，列=股票代码，值=收盘价
     panel = df.pivot(index="trade_date", columns="code", values="close")
     panel.index = panel.index.astype(str)
-    return panel.sort_index()
+    panel = panel.sort_index()
+    _close_panel_cache[key] = panel
+    return panel
 
 
 def load_factor_panel(db_path: Path, factor_col: str = "mass_zscore") -> pd.DataFrame:
