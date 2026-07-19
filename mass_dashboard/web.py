@@ -277,6 +277,10 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
+                elif path == "/api/compare":
+                    codes = qs.get("codes", [""])[0].split(",")
+                    codes = [c.strip() for c in codes if c.strip()]
+                    self._send_json(storage.compare_stocks_zscore(config.db_path, codes))
                 elif path == "/api/industry-rotation":
                     rows = storage.industry_rotation(config.db_path, limit_dates=10)
                     self._send_json({"rows": rows})

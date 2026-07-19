@@ -1411,3 +1411,30 @@ def industry_rotation(db_path: Path, limit_dates: int = 10) -> list[dict]:
         })
     result.sort(key=lambda x: x["change"] or 0, reverse=True)
     return result
+
+
+def compare_stocks_zscore(db_path: Path, codes: list[str]) -> dict:
+    """对比多只股票的 MASS zscore 历史时序。
+    返回 {dates: [...], series: {code: [zscore...]}}
+    """
+    if not codes:
+        return {"dates": [], "series": {}}
+    codes = [str(c) for c in codes]
+    with _read_conn(db_path) as conn:
+        placeholders = ",".join(["?"] * len(codes))
+        df = pd.read_sql_query(
+            f"""
+            SELECT trade_date, code, mass_zscore
+            FROM factor_mass_daily
+            WHERE code IN ({placeholders}) AND mass_zscore IS NOT NULL
+            ORDER BY trade_date, code
+            """,
+            conn, params=codes,
+        )
+    if df.empty:
+        return {"dates": [], "series": {}}
+    pivot = df.pivot(index="trade_date", columns="code", values="mass_zscore").sort_index()
+    return {
+        "dates": pivot.index.tolist(),
+        "series": {code: [round(float(x), 4) if pd.notna(x) else None for x in pivot[code]] for code in pivot.columns if code in codes},
+    }
