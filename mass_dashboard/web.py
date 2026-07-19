@@ -210,6 +210,32 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
 <tr><td>POST</td><td><code>/api/run</code></td><td>date?,force?</td><td>触发任务</td></tr>
 <tr><td>POST</td><td><code>/api/import</code></td><td>-</td><td>导入CSV</td></tr>
 <tr><td>POST</td><td><code>/api/watchlist</code></td><td>code,name?</td><td>加自选</td></tr>
+<tr><td>POST</td><td><code>/api/portfolio-to-watchlist</code></td><td>components,n</td><td>选股结果入自选</td></tr>
+<tr><td>GET</td><td><code>/api/ic-ci</code></td><td>factor,days</td><td>IC置信区间</td></tr>
+<tr><td>GET</td><td><code>/api/ic-after-clip</code></td><td>factor,days</td><td>去极值IC</td></tr>
+<tr><td>GET</td><td><code>/api/ls-sharpe</code></td><td>factor,days</td><td>多空夏普</td></tr>
+<tr><td>GET</td><td><code>/api/monotonicity</code></td><td>factor,days</td><td>单调性指数</td></tr>
+<tr><td>GET</td><td><code>/api/ic-boxplot</code></td><td>factor</td><td>IC箱线统计</td></tr>
+<tr><td>GET</td><td><code>/api/rolling-ic</code></td><td>factor,days,win</td><td>滚动IC稳定性</td></tr>
+<tr><td>GET</td><td><code>/api/factor-correlation</code></td><td>factors</td><td>因子相关性</td></tr>
+<tr><td>GET</td><td><code>/api/factor-decay</code></td><td>-</td><td>因子衰减报告</td></tr>
+<tr><td>GET</td><td><code>/api/factor-distribution</code></td><td>factor</td><td>因子分布</td></tr>
+<tr><td>GET</td><td><code>/api/factor-score</code></td><td>factor,days</td><td>因子综合评分</td></tr>
+<tr><td>GET</td><td><code>/api/portfolio</code></td><td>components,n</td><td>选股组合</td></tr>
+<tr><td>GET</td><td><code>/api/portfolio-concentration</code></td><td>components,n,max</td><td>行业集中度</td></tr>
+<tr><td>GET</td><td><code>/api/compare</code></td><td>codes</td><td>个股zscore对比</td></tr>
+<tr><td>GET</td><td><code>/api/correlation</code></td><td>codes</td><td>股票相关性</td></tr>
+<tr><td>GET</td><td><code>/api/similar</code></td><td>code</td><td>相似股推荐</td></tr>
+<tr><td>GET</td><td><code>/api/industry-relative</code></td><td>date</td><td>行业内zscore</td></tr>
+<tr><td>GET</td><td><code>/api/universe</code></td><td>date</td><td>股票池(ST过滤)</td></tr>
+<tr><td>GET</td><td><code>/api/stock-moneyflow</code></td><td>code</td><td>个股资金流</td></tr>
+<tr><td>GET</td><td><code>/api/stock-percentile</code></td><td>code</td><td>zscore百分位</td></tr>
+<tr><td>GET</td><td><code>/api/integrity</code></td><td>-</td><td>DB完整性</td></tr>
+<tr><td>GET</td><td><code>/api/table-sizes</code></td><td>-</td><td>表大小</td></tr>
+<tr><td>GET</td><td><code>/api/cache-stats</code></td><td>-</td><td>缓存命中率</td></tr>
+<tr><td>GET</td><td><code>/api/logs</code></td><td>n</td><td>查看日志</td></tr>
+<tr><td>GET</td><td><code>/api/missing-dates</code></td><td>end</td><td>缺失交易日</td></tr>
+<tr><td>GET</td><td><code>/api/next-run</code></td><td>-</td><td>下次调度</td></tr>
 </table><p class=m>因子: mass_zscore/mass_neu/mass_raw/momentum_5/momentum_20/momentum_60</p>
 </body></html>""")
                 elif path == "/api/summary":
