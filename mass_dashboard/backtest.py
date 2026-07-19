@@ -78,6 +78,7 @@ def run_backtest(
     holdings_count = []
     rebalance_dates = []
     last_holdings = []  # 最后一期持仓明细
+    hhi_values = []  # 持仓集中度
 
     for i in rebalance_indices:
         date = dates[i]
@@ -113,17 +114,22 @@ def run_backtest(
         # 权重：equal=等权, factor=按因子值加权(softmax归一化)
         if weight == "factor":
             f_vals = factor_panel.loc[date, valid.index].astype(float)
-            # softmax归一化(正因子越高权重越大)
             exp_vals = np.exp(f_vals - f_vals.max())
-            w = exp_vals / exp_vals.sum()
+            w_series = exp_vals / exp_vals.sum()
+            w = w_series
             port_ret = float((stock_rets * w).sum())
         else:
+            w = pd.Series(1.0/len(valid), index=valid.index)
             port_ret = float(stock_rets.mean())
+        # 持仓集中度 HHI (归一化到0-1, 1=单只满仓, 1/n=完全等权)
+        w_sq = float((w ** 2).sum())
+        hhi = w_sq
         # 扣交易成本：每次换仓买卖双边，cost_bps基点
         port_ret -= 2 * cost_bps / 10000.0
         portfolio_returns.append(port_ret)
         holdings_count.append(int(valid.sum()))
         rebalance_dates.append(date)
+        hhi_values.append(hhi)
         last_holdings = [{"code": c, "weight": round(1.0/valid.sum(), 4), "return": round(float(stock_rets[c]), 4)}
                          for c in valid.index[valid.values].tolist()]
         if benchmark == "equal":
@@ -192,6 +198,7 @@ def run_backtest(
         "calmar": round(calmar, 4) if calmar is not None else None,
         "win_rate": round(float((port_returns > 0).mean()), 4),
         "avg_holdings": round(float(np.mean(holdings_count)), 1),
+        "avg_hhi": round(float(np.mean(hhi_values)), 4),  # 持仓集中度均值
         "last_holdings": last_holdings,
         "date_range": [rebalance_dates[0], rebalance_dates[-1]],
     }
