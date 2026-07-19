@@ -449,6 +449,23 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     self._send_json(factor_analysis.build_portfolio(config.db_path, comps, int(qs.get("n", ["30"])[0])))
                 elif path == "/api/ls-sharpe":
                     self._send_json(factor_analysis.long_short_sharpe(config.db_path, factor_col=qs.get("factor", ["mass_zscore"])[0], forward_days=int(qs.get("days", ["5"])[0])))
+                elif path == "/api/portfolio-to-watchlist":
+                    import json as _j
+                    comps_str = qs.get("components", ["mass_zscore:1:1,momentum_5:1:1,volatility_20:0.5:-1"])[0]
+                    comps = []
+                    for c in comps_str.split(","):
+                        parts = c.split(":")
+                        if len(parts) >= 1 and parts[0].strip():
+                            comps.append({"name": parts[0].strip(), "weight": float(parts[1]) if len(parts)>1 else 1.0, "sign": float(parts[2]) if len(parts)>2 else 1.0})
+                    pf = factor_analysis.build_portfolio(config.db_path, comps, int(qs.get("n", ["30"])[0]))
+                    if "error" in pf:
+                        self._send_json(pf)
+                        return
+                    added = 0
+                    for x in pf.get("top", []):
+                        storage.add_to_watchlist(config.db_path, x["code"], name=x.get("name",""), note=f"portfolio score={x['score']}")
+                        added += 1
+                    self._send_json({"ok": True, "added": added, "date": pf["date"]})
                 elif path == "/api/portfolio-concentration":
                     comps_str = qs.get("components", ["mass_zscore:1:1,momentum_5:1:1,volatility_20:0.5:-1"])[0]
                     comps = []
