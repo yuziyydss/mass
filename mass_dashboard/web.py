@@ -148,6 +148,44 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                     profile = storage.stock_profile(config.db_path, code) if code else None
                     template = env.get_template("stock.html")
                     self._send_html(template.render(code=code, profile=profile or {}))
+                elif path == "/api-docs":
+                    self._send_html("""<!doctype html><html><head><meta charset=utf-8><title>MASS API 文档</title>
+<style>body{font-family:Segoe UI,sans-serif;max-width:900px;margin:30px auto;padding:0 20px;color:#17201b}
+h1{color:#0d7c66}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:6px 8px;text-align:left;font-size:13px}
+code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color:#6b746f}</style></head>
+<body><h1>◈ MASS Dashboard API 文档</h1>
+<p class=m>所有端点需要 Basic Auth (admin/admin123)。日期格式 YYYYMMDD。</p>
+<table><tr><th>方法</th><th>路径</th><th>参数</th><th>说明</th></tr>
+<tr><td>GET</td><td><code>/</code></td><td>-</td><td>首页 dashboard</td></tr>
+<tr><td>GET</td><td><code>/stock</code></td><td>code</td><td>个股详情页</td></tr>
+<tr><td>GET</td><td><code>/api/summary</code></td><td>date?</td><td>交易日摘要</td></tr>
+<tr><td>GET</td><td><code>/api/health</code></td><td>-</td><td>数据健康检查</td></tr>
+<tr><td>GET</td><td><code>/api/dates</code></td><td>-</td><td>所有交易日</td></tr>
+<tr><td>GET</td><td><code>/api/industries</code></td><td>date?</td><td>行业列表</td></tr>
+<tr><td>GET</td><td><code>/api/mass</code></td><td>date?,page,per_page,industry,q,direction</td><td>MASS分页</td></tr>
+<tr><td>GET</td><td><code>/api/latest</code></td><td>date?,limit,industry,q,direction</td><td>MASS最新</td></tr>
+<tr><td>GET</td><td><code>/api/industry</code></td><td>date?</td><td>行业统计</td></tr>
+<tr><td>GET</td><td><code>/api/industry-rotation</code></td><td>-</td><td>行业轮动</td></tr>
+<tr><td>GET</td><td><code>/api/history</code></td><td>code</td><td>个股MASS历史</td></tr>
+<tr><td>GET</td><td><code>/api/kline</code></td><td>code,limit?</td><td>个股K线+MA</td></tr>
+<tr><td>GET</td><td><code>/api/financial</code></td><td>code</td><td>财务指标</td></tr>
+<tr><td>GET</td><td><code>/api/focus</code></td><td>date?,limit</td><td>高盛关注</td></tr>
+<tr><td>GET</td><td><code>/api/week-flow</code></td><td>date?,limit</td><td>周K净流入</td></tr>
+<tr><td>GET</td><td><code>/api/bottom</code></td><td>date?,min,limit</td><td>底部4条件</td></tr>
+<tr><td>GET</td><td><code>/api/factor-ic</code></td><td>factor</td><td>因子IC/IR</td></tr>
+<tr><td>GET</td><td><code>/api/factor-quantile</code></td><td>factor</td><td>分层回测</td></tr>
+<tr><td>GET</td><td><code>/api/factor-compare</code></td><td>-</td><td>多因子对比</td></tr>
+<tr><td>GET</td><td><code>/api/backtest</code></td><td>factor,n,hold,dir</td><td>回测</td></tr>
+<tr><td>GET</td><td><code>/api/watchlist</code></td><td>action?</td><td>自选股</td></tr>
+<tr><td>GET</td><td><code>/api/export</code></td><td>同/api/mass</td><td>导出CSV</td></tr>
+<tr><td>GET</td><td><code>/api/jobs</code></td><td>-</td><td>任务历史</td></tr>
+<tr><td>GET</td><td><code>/api/progress</code></td><td>-</td><td>实时进度</td></tr>
+<tr><td>GET</td><td><code>/api/alerts</code></td><td>-</td><td>告警</td></tr>
+<tr><td>POST</td><td><code>/api/run</code></td><td>date?,force?</td><td>触发任务</td></tr>
+<tr><td>POST</td><td><code>/api/import</code></td><td>-</td><td>导入CSV</td></tr>
+<tr><td>POST</td><td><code>/api/watchlist</code></td><td>code,name?</td><td>加自选</td></tr>
+</table><p class=m>因子: mass_zscore/mass_neu/mass_raw/momentum_5/momentum_20/momentum_60</p>
+</body></html>""")
                 elif path == "/api/summary":
                     self._send_json(storage.get_summary(config.db_path, qs.get("date", [None])[0]))
                 elif path == "/api/health":
