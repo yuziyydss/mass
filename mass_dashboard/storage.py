@@ -1366,3 +1366,48 @@ def cleanup_old_jobs(db_path: Path, keep: int = 500) -> int:
         conn.execute("DELETE FROM job_progress WHERE run_id <= ?", (threshold,))
         cur = conn.execute("DELETE FROM job_runs WHERE id <= ?", (threshold,))
         return cur.rowcount
+
+
+def industry_rotation(db_path: Path, limit_dates: int = 10) -> list[dict]:
+    """行业轮动：最近N个交易日各行业平均zscore,看行业强弱变化。
+    返回 [{industry, avg_zscore, dates: [{date, avg}]}]
+    """
+    with _read_conn(db_path) as conn:
+        # 取最近N个交易日
+        date_rows = conn.execute(
+            "SELECT DISTINCT trade_date FROM factor_mass_daily ORDER BY trade_date DESC LIMIT ?",
+            (limit_dates,),
+        ).fetchall()
+        dates = [r["trade_date"] for r in date_rows]
+        if not dates:
+            return []
+        placeholders = ",".join(["?"] * len(dates))
+        rows = conn.execute(
+            f"""
+            SELECT trade_date, COALESCE(industry,'未分类') AS industry,
+                   AVG(mass_zscore) AS avg_z
+            FROM factor_mass_daily
+            WHERE trade_date IN ({placeholders}) AND mass_zscore IS NOT NULL
+            GROUP BY trade_date, COALESCE(industry,'未分类')
+            HAVING COUNT(*) >= 3
+            """,
+            dates,
+        ).fetchall()
+    # 组织成 industry -> {date: avg}
+    by_industry: dict = {}
+    for r in rows:
+        by_industry.setdefault(r["industry"], {})[r["trade_date"]] = float(r["avg_z"]) if r["avg_z"] is not None else None
+    result = []
+    for ind, date_map in by_industry.items():
+        latest = date_map.get(dates[0])
+        earliest = date_map.get(dates[-1]) if len(dates) > 1 else None
+        change = (latest - earliest) if (latest is not None and earliest is not None) else None
+        result.append({
+            "industry": ind,
+            "latest_avg": round(latest, 4) if latest is not None else None,
+            "change": round(change, 4) if change is not None else None,
+            "dates": dates,
+            "values": [round(date_map.get(d), 4) if date_map.get(d) is not None else None for d in dates],
+        })
+    result.sort(key=lambda x: x["change"] or 0, reverse=True)
+    return result

@@ -235,6 +235,9 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
+                elif path == "/api/industry-rotation":
+                    rows = storage.industry_rotation(config.db_path, limit_dates=10)
+                    self._send_json({"rows": rows})
                 elif path == "/api/watchlist":
                     action = qs.get("action", ["get"])[0]
                     if action == "delete":
