@@ -911,3 +911,45 @@ def ic_after_clip(db_path, factor_col: str = "mass_zscore", forward_days: int = 
         "clipped_ic": round(float(np.mean(clipped_ics)), 4) if clipped_ics else None,
         "delta": round(float(np.mean(clipped_ics) - np.mean(orig_ics)), 4) if clipped_ics else None,
     }
+
+
+def ic_confidence_interval(db_path, factor_col: str = "mass_zscore", forward_days: int = 5, n_bootstrap: int = 500, ci: float = 0.95) -> dict:
+    """IC的bootstrap置信区间，判断IC是否统计显著。"""
+    import numpy as np
+    panel = storage.load_factor_panel(db_path, factor_col=factor_col)
+    if panel.empty:
+        return {"error": "因子面板为空"}
+    close_panel = storage.load_close_panel(db_path, panel.index[0], panel.index[-1])
+    common = panel.index.intersection(close_panel.index).tolist()
+    if len(common) < 3:
+        return {"error": "公共日期不足"}
+    fwd = compute_forward_returns(close_panel.loc[common], [forward_days])
+    ic = compute_ic_series(panel.loc[common], fwd)
+    if forward_days not in ic or ic[forward_days].empty:
+        return {"error": "IC不足"}
+    ics = ic[forward_days]["ic"].values
+    if len(ics) < 3:
+        return {"error": "IC样本不足"}
+    rng = np.random.default_rng(42)
+    boot_means = []
+    for _ in range(n_bootstrap):
+        sample = rng.choice(ics, size=len(ics), replace=True)
+        boot_means.append(float(np.mean(sample)))
+    alpha = (1 - ci) / 2
+    lo = float(np.percentile(boot_means, alpha * 100))
+    hi = float(np.percentile(boot_means, (1 - alpha) * 100))
+    mean = float(np.mean(ics))
+    # t-stat 近似
+    std = float(np.std(ics, ddof=1)) if len(ics) > 1 else 0
+    t_stat = float(mean / (std / np.sqrt(len(ics)))) if std > 0 else 0
+    return {
+        "factor": factor_col,
+        "forward_days": forward_days,
+        "n_periods": len(ics),
+        "ic_mean": round(mean, 4),
+        "ci_lo": round(lo, 4),
+        "ci_hi": round(hi, 4),
+        "ci_level": ci,
+        "t_stat": round(t_stat, 3),
+        "significant": (lo > 0) or (hi < 0),  # CI不含0=显著
+    }
