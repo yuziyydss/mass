@@ -1349,3 +1349,20 @@ def in_watchlist(db_path: Path, code: str) -> bool:
     with _read_conn(db_path) as conn:
         row = conn.execute("SELECT 1 FROM watchlist WHERE code=?", (str(code),)).fetchone()
         return row is not None
+
+
+def cleanup_old_jobs(db_path: Path, keep: int = 500) -> int:
+    """清理 job_runs/job_progress 老记录，只保留最近 keep 条。
+    在 pipeline 成功后调用，防止表无限增长。
+    """
+    with connect(db_path) as conn:
+        row = conn.execute("SELECT MIN(id) AS mn, MAX(id) AS mx FROM job_runs").fetchone()
+        if not row or not row["mx"]:
+            return 0
+        threshold = row["mx"] - keep
+        if threshold <= 0:
+            return 0
+        # 删除旧 job_progress（先于 job_runs，无外键约束）
+        conn.execute("DELETE FROM job_progress WHERE run_id <= ?", (threshold,))
+        cur = conn.execute("DELETE FROM job_runs WHERE id <= ?", (threshold,))
+        return cur.rowcount

@@ -160,6 +160,7 @@ def run_mass_pipeline(config: AppConfig, trade_date: Optional[str] = None, force
         alerts = check_mass_quality(final_df, config.quality_min_rows)
         storage.replace_alerts(config.db_path, resolved_date, alerts)
         storage.finish_job_run(config.db_path, run_id, "SUCCESS", row_count)
+        storage.cleanup_old_jobs(config.db_path)
         storage.update_job_progress(
             config.db_path,
             run_id,
