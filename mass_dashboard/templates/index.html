@@ -370,6 +370,13 @@
             <div class="bars" id="industryBars"></div>
           </div>
 
+          <div class="panel">
+            <div class="panel-head"><h2>行业轮动热力图</h2><div class="subtle">近10日各行业 avg zscore</div></div>
+            <div style="padding:10px 14px;overflow:auto;max-height:300px">
+              <div id="rotationHeat"></div>
+            </div>
+          </div>
+
           <div>
             <div class="panel">
               <div class="panel-head"><h2>运行进度</h2></div>
@@ -986,6 +993,32 @@
       }).join("");
     }
 
+    async function loadRotation() {
+      try {
+        const d = await getJson("/api/industry-rotation");
+        const rows = d.rows || [];
+        if (!rows.length) { $("rotationHeat").innerHTML = '<div class="empty-state">无数据</div>'; return; }
+        // 取变化最大的前15个行业
+        const top = rows.slice(0, 15);
+        const dates = top[0].dates;
+        // 热力图: 行=行业, 列=日期, 颜色=值
+        let html = `<table style="font-size:11px;width:100%;border-collapse:collapse"><thead><tr><th>行业</th>`;
+        dates.forEach(dt => html += `<th style="padding:2px 4px">${dt.slice(4)}</th>`);
+        html += `<th>变化</th></tr></thead><tbody>`;
+        top.forEach(r => {
+          html += `<tr><td style="padding:2px 6px">${r.industry}</td>`;
+          r.values.forEach(v => {
+            const color = v == null ? "#f0f1f0" : (v >= 0 ? `rgba(13,124,102,${Math.min(0.85, Math.abs(v)/2+0.1)})` : `rgba(180,35,24,${Math.min(0.85, Math.abs(v)/2+0.1)})`);
+            html += `<td style="background:${color};color:#fff;text-align:center;padding:2px 4px;font-size:10px">${v!=null?v.toFixed(2):''}</td>`;
+          });
+          const ch = r.change || 0;
+          html += `<td class="num ${cls(ch)}">${ch.toFixed(3)}</td></tr>`;
+        });
+        html += "</tbody></table>";
+        $("rotationHeat").innerHTML = html;
+      } catch(e) { $("rotationHeat").innerHTML = "<div class='empty-state'>加载失败</div>"; }
+    }
+
     async function loadJobs() {
       const data = await getJson("/api/jobs");
       const rows = (data.rows || []).slice(0, 18);
@@ -1069,7 +1102,7 @@
       if (resetPage) state.page = 1;
       await loadSummary();
       // 总览 tab 的数据
-      await Promise.all([loadIndustry(), loadJobs(), loadProgress(), loadWatchlist(), loadHealth()]);
+      await Promise.all([loadIndustry(), loadJobs(), loadProgress(), loadWatchlist(), loadHealth(), loadRotation()]);
       // 当前激活的其他 tab 按需刷新
       const active = document.querySelector(".tab.active").dataset.tab;
       if (active === "mass") await loadMassTable();
