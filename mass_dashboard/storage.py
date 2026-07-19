@@ -1556,3 +1556,31 @@ def universe_filter(db_path: Path, trade_date: str, min_list_days: int = 365, ex
         # 新股过滤需要list_date,这里从stock_basic取（但未缓存,简化:只按name过滤ST）
         result.append(r["code"])
     return result
+
+
+def similar_stocks(db_path: Path, code: str, limit: int = 10) -> list[dict]:
+    """推荐相似股：同行业 + zscore相近的股票。"""
+    with _read_conn(db_path) as conn:
+        # 取该股最新数据
+        row = conn.execute("SELECT MAX(trade_date) AS d FROM factor_mass_daily").fetchone()
+        if not row or not row["d"]:
+            return []
+        latest = row["d"]
+        target = conn.execute("SELECT code, name, industry, mass_zscore FROM factor_mass_daily WHERE trade_date=? AND code=?", (latest, code)).fetchone()
+        if not target or target["mass_zscore"] is None:
+            return []
+        industry = target["industry"]
+        z = float(target["mass_zscore"])
+        # 同行业、zscore接近的
+        rows = conn.execute(
+            """
+            SELECT code, name, industry, mass_zscore, total_mkt_cap
+            FROM factor_mass_daily
+            WHERE trade_date=? AND industry=? AND mass_zscore IS NOT NULL AND code != ?
+            """,
+            (latest, industry, code),
+        ).fetchall()
+    # 按zscore距离排序
+    scored = [(abs(float(r["mass_zscore"]) - z), r) for r in rows]
+    scored.sort(key=lambda x: x[0])
+    return [dict(r) for _, r in scored[:limit]]
