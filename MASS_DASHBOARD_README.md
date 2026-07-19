@@ -83,19 +83,39 @@ factors/
 ```text
 run_mass_dashboard.py               启动入口和 CLI
 mass_dashboard/bars.py              日行情缓存与本地 MASS 计算
-mass_dashboard/pipeline.py          MASS 任务编排
-mass_dashboard/scheduler.py         每日调度
-mass_dashboard/storage.py           SQLite 表结构和查询
+mass_dashboard/pipeline.py          MASS 任务编排（含 moneyflow + 底部条件阶段）
+mass_dashboard/scheduler.py         每日调度（失败自动重试3次）
+mass_dashboard/storage.py           SQLite 表结构、查询、schema 迁移
 mass_dashboard/notifier.py          飞书/通用 Webhook 告警
-mass_dashboard/web.py               HTTP API 和网页服务
-mass_dashboard/templates/index.html 网页首页
-mass_dashboard/templates/stock.html 个股详情页
+mass_dashboard/web.py               HTTP API 和网页服务（27 个端点）
+mass_dashboard/templates/index.html 网页首页（4 标签页 + 暗色模式）
+mass_dashboard/templates/stock.html 个股详情页（K线+RSI+MACD+财务）
+mass_dashboard/moneyflow.py         周K下跌+主力净流入
+mass_dashboard/bottom.py            底部4条件筛选（地量/不创新低/估值低/底背离）
+mass_dashboard/factor_analysis.py   因子IC/IR + 分层回测 + 多因子合成
+mass_dashboard/backtest.py          回测引擎（选股+夏普+最大回撤）
+mass_dashboard/momentum.py          动量/波动率/换手率因子
+mass_dashboard/financial.py         财务指标按需拉取
+mass_dashboard/quality.py           质量检查 + 数据时效监控
 ```
+
+## 功能模块
+
+- **4 标签页**：总览 / MASS 数据表 / 因子分析 / 选股筛选
+- **因子分析**：IC/IR、分层回测、多因子对比、回测引擎、多因子合成
+- **选股筛选**：周K下跌+净流入、底部4条件
+- **个股分析**：K线+成交量+MA、RSI+MACD、财务指标、MASS历史
+- **数据健康**：时效监控、schema 自动迁移
+- **其他**：自选股收藏、CSV 导出、API 文档(/api-docs)、暗色模式
 
 ## 当前数据结构
 
-- `factor_mass_daily`：每日 MASS 因子结果
-- `daily_bars`：原始日行情缓存，用于加速 MASS 计算和后续回测
+- `factor_mass_daily`：每日 MASS 因子结果（含 pb/dv_ratio）
+- `daily_bars`：原始日行情缓存，用于加速 MASS 计算和回测
+- `daily_moneyflow`：资金流缓存，用于周K净流入
+- `week_down_flow`：周K下跌+净流入结果
+- `bottom_conditions`：底部4条件结果
+- `watchlist`：自选股
 - `job_runs`：任务运行记录
 - `job_progress`：任务实时进度
 - `factor_alerts`：质量告警
