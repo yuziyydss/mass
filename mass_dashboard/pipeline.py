@@ -14,6 +14,7 @@ from .notifier import send_notification
 from .quality import check_mass_quality
 from . import bars as bar_cache
 from . import storage
+from . import moneyflow
 
 LOGGER = logging.getLogger("mass_dashboard.pipeline")
 JOB_NAME = "mass_tushare_daily"
@@ -177,6 +178,34 @@ def run_mass_pipeline(config: AppConfig, trade_date: Optional[str] = None, force
         else:
             send_notification(config, f"MASS job succeeded: {resolved_date}", f"Saved {row_count} rows")
         LOGGER.info("MASS pipeline finished: %s rows=%s", resolved_date, row_count)
+
+        # ── moneyflow 阶段（独立于 MASS，失败不影响 MASS 结果）──
+        try:
+            week_start, week_end = moneyflow._get_week_bounds(resolved_date)
+            storage.update_job_progress(
+                config.db_path, run_id, JOB_NAME, resolved_date,
+                "MONEYFLOW_CACHE", total=len(base),
+                message="Caching moneyflow data for this week",
+            )
+            mf_info = moneyflow.ensure_moneyflow_cache(
+                pro=pro, db_path=config.db_path,
+                week_start=week_start, week_end=week_end,
+                cfg=cfg, expected_stock_count=len(base),
+            )
+            storage.update_job_progress(
+                config.db_path, run_id, JOB_NAME, resolved_date,
+                "WEEK_FLOW_CALC", total=len(base),
+                message="Calculating week-down money-in stocks",
+            )
+            flow_rows = moneyflow.calculate_week_down_flow(
+                db_path=config.db_path, base=base,
+                trade_date=resolved_date, cfg=cfg,
+            )
+            flow_count = storage.upsert_week_down_flow(config.db_path, pd.DataFrame(flow_rows), resolved_date) if flow_rows else 0
+            LOGGER.info("Week-down-flow: %s stocks for %s", flow_count, resolved_date)
+        except Exception as mf_err:
+            LOGGER.warning("Moneyflow 阶段失败（不影响 MASS 结果）: %s", mf_err)
+
         return {"status": "SUCCESS", "trade_date": resolved_date, "row_count": row_count, "alerts": alerts}
     except Exception as err:
         storage.finish_job_run(config.db_path, run_id, "FAILED", 0, str(err))

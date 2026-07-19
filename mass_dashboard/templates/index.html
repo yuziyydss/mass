@@ -414,6 +414,27 @@
         </div>
       </div>
 
+      <div class="panel">
+        <div class="panel-head">
+          <h2>周K下跌 + 净流入</h2>
+          <div class="subtle">本周均价下跌但主力净流入的股票</div>
+        </div>
+        <div class="table-wrap" style="max-height:360px">
+          <table>
+            <thead>
+              <tr>
+                <th>代码</th>
+                <th>名称</th>
+                <th>行业</th>
+                <th class="num">周涨跌%</th>
+                <th class="num">主力净流入(万)</th>
+              </tr>
+            </thead>
+            <tbody id="weekFlowBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div>
         <div class="panel">
           <div class="panel-head"><h2>运行进度</h2></div>
@@ -563,6 +584,24 @@
       });
     }
 
+    async function loadWeekFlow() {
+      const data = await getJson(`/api/week-flow?date=${selectedDate()}&limit=30`);
+      $("weekFlowBody").innerHTML = data.rows.map(row => `
+        <tr data-code="${row.code}">
+          <td>${row.code}</td>
+          <td>${row.name || ""}</td>
+          <td>${row.industry || ""}</td>
+          <td class="num ${cls(row.week_change_pct)}">${fmt(row.week_change_pct, 2)}</td>
+          <td class="num" style="color:var(--good)">${fmt(row.main_net_in, 2)}</td>
+        </tr>
+      `).join("");
+      document.querySelectorAll("#weekFlowBody tr").forEach(tr => {
+        tr.addEventListener("click", () => {
+          window.location.href = `/stock?code=${encodeURIComponent(tr.dataset.code)}`;
+        });
+      });
+    }
+
     async function loadIndustry() {
       const data = await getJson(`/api/industry?date=${selectedDate()}`);
       const rows = data.rows.slice(0, 18);
@@ -606,7 +645,7 @@
     async function refreshMain(resetPage = false) {
       if (resetPage) state.page = 1;
       await loadSummary();
-      await Promise.all([loadMassTable(), loadFocus(), loadIndustry(), loadJobs(), loadProgress()]);
+      await Promise.all([loadMassTable(), loadFocus(), loadWeekFlow(), loadIndustry(), loadJobs(), loadProgress()]);
     }
 
     $("dateSelect").addEventListener("change", async () => {

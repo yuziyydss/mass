@@ -50,6 +50,44 @@ DAILY_BAR_NUMERIC_COLUMNS = [
     "amount",
 ]
 
+MONEYFLOW_COLUMNS = [
+    "trade_date",
+    "code",
+    "buy_sm_vol",
+    "sell_sm_vol",
+    "buy_md_vol",
+    "sell_md_vol",
+    "buy_lg_vol",
+    "sell_lg_vol",
+    "buy_elg_vol",
+    "sell_elg_vol",
+    "net_mf_vol",
+    "net_mf_amount",
+]
+
+MONEYFLOW_NUMERIC_COLUMNS = [
+    "buy_sm_vol",
+    "sell_sm_vol",
+    "buy_md_vol",
+    "sell_md_vol",
+    "buy_lg_vol",
+    "sell_lg_vol",
+    "buy_elg_vol",
+    "sell_elg_vol",
+    "net_mf_vol",
+    "net_mf_amount",
+]
+
+WEEK_DOWN_FLOW_COLUMNS = [
+    "trade_date",
+    "code",
+    "name",
+    "industry",
+    "week_change_pct",
+    "main_net_in",
+    "total_mkt_cap",
+]
+
 
 # 线程本地只读连接：web 每个 HTTP 请求线程复用同一连接，避免反复 open/close。
 # 写路径仍走 connect()（每次独立短连接，配合 WAL 避免长事务持锁）。
@@ -176,6 +214,44 @@ def init_db(db_path: Path) -> None:
                 message TEXT,
                 updated_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS daily_moneyflow (
+                trade_date TEXT NOT NULL,
+                code TEXT NOT NULL,
+                buy_sm_vol REAL,
+                sell_sm_vol REAL,
+                buy_md_vol REAL,
+                sell_md_vol REAL,
+                buy_lg_vol REAL,
+                sell_lg_vol REAL,
+                buy_elg_vol REAL,
+                sell_elg_vol REAL,
+                net_mf_vol REAL,
+                net_mf_amount REAL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (trade_date, code)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_moneyflow_date
+            ON daily_moneyflow (trade_date);
+
+            CREATE INDEX IF NOT EXISTS idx_moneyflow_code_date
+            ON daily_moneyflow (code, trade_date);
+
+            CREATE TABLE IF NOT EXISTS week_down_flow (
+                trade_date TEXT NOT NULL,
+                code TEXT NOT NULL,
+                name TEXT,
+                industry TEXT,
+                week_change_pct REAL,
+                main_net_in REAL,
+                total_mkt_cap REAL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (trade_date, code)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_week_down_flow_date
+            ON week_down_flow (trade_date);
             """
         )
 
@@ -301,7 +377,10 @@ def load_daily_bars(
     start_date: str,
     end_date: str,
     codes: Optional[Sequence[str]] = None,
+    columns: Sequence[str] = ("code", "trade_date", "high", "low"),
 ) -> pd.DataFrame:
+    col_list = ",".join(columns)
+    default_cols = list(columns)
     params: list[object] = [start_date, end_date]
     clauses = ["trade_date BETWEEN ? AND ?"]
     if codes:
@@ -311,18 +390,18 @@ def load_daily_bars(
             for part in chunked(code_list):
                 placeholders = ",".join(["?"] * len(part))
                 sql = f"""
-                    SELECT code, trade_date, high, low
+                    SELECT {col_list}
                     FROM daily_bars
                     WHERE trade_date BETWEEN ? AND ? AND code IN ({placeholders})
                     ORDER BY code, trade_date
                 """
                 frames.append(pd.read_sql_query(sql, conn, params=[start_date, end_date] + part))
-        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["code", "trade_date", "high", "low"])
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=default_cols)
 
     with _read_conn(db_path) as conn:
         return pd.read_sql_query(
             f"""
-            SELECT code, trade_date, high, low
+            SELECT {col_list}
             FROM daily_bars
             WHERE {" AND ".join(clauses)}
             ORDER BY code, trade_date
@@ -844,3 +923,161 @@ def import_mass_csvs(db_path: Path, source_dir: Path) -> int:
         df = read_csv_with_fallback(csv_file)
         imported += upsert_mass_results(db_path, df, trade_date)
     return imported
+
+
+# ── moneyflow 缓存 ──
+
+
+def upsert_moneyflow(db_path: Path, df: pd.DataFrame) -> int:
+    if df is None or df.empty:
+        return 0
+
+    work = df.rename(columns={"ts_code": "code"})
+    for col in MONEYFLOW_COLUMNS:
+        if col not in work.columns:
+            work[col] = None
+    work = work.dropna(subset=["trade_date", "code"])
+    if work.empty:
+        return 0
+
+    work["trade_date"] = work["trade_date"].astype(str)
+    work["code"] = work["code"].astype(str)
+    for col in MONEYFLOW_NUMERIC_COLUMNS:
+        work[col] = pd.to_numeric(work[col], errors="coerce")
+
+    work = work.drop_duplicates(subset=["trade_date", "code"], keep="last")
+    updated_at = utc_now()
+    rows = [
+        tuple(clean_value(item[col]) for col in MONEYFLOW_COLUMNS) + (updated_at,)
+        for item in work[MONEYFLOW_COLUMNS].to_dict("records")
+    ]
+
+    placeholders = ",".join(["?"] * (len(MONEYFLOW_COLUMNS) + 1))
+    update_cols = [col for col in MONEYFLOW_COLUMNS if col not in {"trade_date", "code"}]
+    update_sql = ", ".join([f"{col}=excluded.{col}" for col in update_cols] + ["updated_at=excluded.updated_at"])
+
+    with connect(db_path) as conn:
+        conn.executemany(
+            f"""
+            INSERT INTO daily_moneyflow ({",".join(MONEYFLOW_COLUMNS)}, updated_at)
+            VALUES ({placeholders})
+            ON CONFLICT(trade_date, code) DO UPDATE SET {update_sql}
+            """,
+            rows,
+        )
+    return len(rows)
+
+
+def moneyflow_counts(db_path: Path, trade_dates: Sequence[str]) -> dict[str, int]:
+    dates = [str(item) for item in trade_dates if item]
+    if not dates:
+        return {}
+
+    counts: dict[str, int] = {}
+    with _read_conn(db_path) as conn:
+        for part in chunked(dates):
+            placeholders = ",".join(["?"] * len(part))
+            rows = conn.execute(
+                f"""
+                SELECT trade_date, COUNT(*) AS row_count
+                FROM daily_moneyflow
+                WHERE trade_date IN ({placeholders})
+                GROUP BY trade_date
+                """,
+                part,
+            ).fetchall()
+            counts.update({row["trade_date"]: int(row["row_count"] or 0) for row in rows})
+    return counts
+
+
+def missing_moneyflow_dates(db_path: Path, trade_dates: Sequence[str], min_rows: int) -> list[str]:
+    counts = moneyflow_counts(db_path, trade_dates)
+    threshold = max(1, int(min_rows))
+    return [str(date) for date in trade_dates if counts.get(str(date), 0) < threshold]
+
+
+def load_moneyflow(db_path: Path, start_date: str, end_date: str, codes: Optional[Sequence[str]] = None) -> pd.DataFrame:
+    if codes:
+        code_list = [str(code) for code in codes]
+        frames = []
+        with _read_conn(db_path) as conn:
+            for part in chunked(code_list):
+                placeholders = ",".join(["?"] * len(part))
+                sql = f"""
+                    SELECT {",".join(MONEYFLOW_COLUMNS)}
+                    FROM daily_moneyflow
+                    WHERE trade_date BETWEEN ? AND ? AND code IN ({placeholders})
+                    ORDER BY code, trade_date
+                """
+                frames.append(pd.read_sql_query(sql, conn, params=[start_date, end_date] + part))
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=MONEYFLOW_COLUMNS)
+
+    with _read_conn(db_path) as conn:
+        return pd.read_sql_query(
+            f"""
+            SELECT {",".join(MONEYFLOW_COLUMNS)}
+            FROM daily_moneyflow
+            WHERE trade_date BETWEEN ? AND ?
+            ORDER BY code, trade_date
+            """,
+            conn,
+            params=[start_date, end_date],
+        )
+
+
+# ── week_down_flow 结果 ──
+
+
+def upsert_week_down_flow(db_path: Path, df: pd.DataFrame, trade_date: str) -> int:
+    if df.empty:
+        return 0
+
+    work = df.copy()
+    work["trade_date"] = trade_date
+    for col in WEEK_DOWN_FLOW_COLUMNS:
+        if col not in work.columns:
+            work[col] = None
+
+    updated_at = utc_now()
+    rows = [
+        tuple(clean_value(item[col]) for col in WEEK_DOWN_FLOW_COLUMNS) + (updated_at,)
+        for item in work[WEEK_DOWN_FLOW_COLUMNS].to_dict("records")
+    ]
+
+    placeholders = ",".join(["?"] * (len(WEEK_DOWN_FLOW_COLUMNS) + 1))
+    update_cols = [col for col in WEEK_DOWN_FLOW_COLUMNS if col not in {"trade_date", "code"}]
+    update_sql = ", ".join([f"{col}=excluded.{col}" for col in update_cols] + ["updated_at=excluded.updated_at"])
+
+    with connect(db_path) as conn:
+        conn.executemany(
+            f"""
+            INSERT INTO week_down_flow ({",".join(WEEK_DOWN_FLOW_COLUMNS)}, updated_at)
+            VALUES ({placeholders})
+            ON CONFLICT(trade_date, code) DO UPDATE SET {update_sql}
+            """,
+            rows,
+        )
+    return len(rows)
+
+
+def query_week_down_flow(db_path: Path, trade_date: Optional[str] = None, limit: int = 100) -> dict:
+    if trade_date is None:
+        with _read_conn(db_path) as conn:
+            row = conn.execute("SELECT MAX(trade_date) AS trade_date FROM week_down_flow").fetchone()
+            trade_date = row["trade_date"] if row else None
+    if not trade_date:
+        return {"trade_date": None, "rows": []}
+
+    limit = max(1, min(limit, 500))
+    with _read_conn(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT trade_date, code, name, industry, week_change_pct, main_net_in, total_mkt_cap
+            FROM week_down_flow
+            WHERE trade_date=?
+            ORDER BY main_net_in DESC
+            LIMIT ?
+            """,
+            (trade_date, limit),
+        ).fetchall()
+    return {"trade_date": trade_date, "rows": [dict(row) for row in rows]}

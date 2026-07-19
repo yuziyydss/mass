@@ -179,6 +179,14 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                             limit=int(qs.get("limit", ["100"])[0]),
                         )
                     )
+                elif path == "/api/week-flow":
+                    self._send_json(
+                        storage.query_week_down_flow(
+                            config.db_path,
+                            trade_date=qs.get("date", [None])[0],
+                            limit=int(qs.get("limit", ["100"])[0]),
+                        )
+                    )
                 else:
                     self._send_json({"error": "not found"}, status=404)
             except Exception as err:
