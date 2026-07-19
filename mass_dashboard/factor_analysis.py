@@ -649,3 +649,52 @@ def ic_heatmap(db_path, factor_col: str = "mass_zscore", forward_days_list: list
                 row.append(None)
         matrix.append(row)
     return {"dates": dates, "periods": forward_days_list, "matrix": matrix}
+
+
+def factor_decay_report(db_path, factors: list[str] = None, max_period: int = 20) -> list[dict]:
+    """各因子IC随前瞻周期衰减报告。
+    对每个因子算1/5/10/20日IC,看衰减曲线。
+    """
+    if factors is None:
+        factors = ["mass_zscore","momentum_5","momentum_20","volatility_20","turnover_20"]
+    periods = [p for p in [1,5,10,20] if p <= max_period]
+    results = []
+    close_panel = None
+    from . import momentum
+    for name in factors:
+        if name.startswith("momentum"):
+            p = momentum.compute_momentum_panel(db_path, int(name.split("_")[1]))
+        elif name.startswith("volatility"):
+            p = momentum.compute_volatility_panel(db_path, int(name.split("_")[1]))
+        elif name.startswith("turnover"):
+            p = momentum.compute_turnover_panel(db_path, int(name.split("_")[1]))
+        elif name in ("mass_zscore","mass_neu","mass_raw"):
+            p = storage.load_factor_panel(db_path, name)
+        else:
+            continue
+        if p.empty:
+            continue
+        if close_panel is None:
+            close_panel = storage.load_close_panel(db_path, p.index[0], p.index[-1])
+        common = p.index.intersection(close_panel.index).tolist()
+        if len(common) < 3:
+            continue
+        fwd = compute_forward_returns(close_panel.loc[common], periods)
+        ic = compute_ic_series(p.loc[common], fwd)
+        row = {"factor": name}
+        for pp in periods:
+            summary = next((s for s in summarize_ic(ic) if s["forward_days"] == pp), {})
+            row[f"ic_{pp}"] = summary.get("ic_mean")
+            row[f"ir_{pp}"] = summary.get("ir")
+        # 半衰期估计: IC降到一半的周期(粗略)
+        ic1 = row.get("ic_1") or row.get("ic_5")
+        if ic1:
+            half = None
+            for pp in periods:
+                v = row.get(f"ic_{pp}")
+                if v is not None and abs(v) < abs(ic1) / 2:
+                    half = pp
+                    break
+            row["half_life"] = half
+        results.append(row)
+    return results
