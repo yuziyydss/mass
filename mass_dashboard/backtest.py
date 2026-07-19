@@ -151,6 +151,14 @@ def run_backtest(
     drawdowns = (peak - port_cum) / peak
     max_drawdown = float(drawdowns.max()) if len(drawdowns) > 0 else 0.0
 
+    # 年化收益 + 年化波动率 + Calmar
+    periods_per_year = 252 / hold_days
+    total_return = float(port_cum[-1] - 1)
+    n_years = len(port_returns) / periods_per_year
+    annualized_return = float((1 + total_return) ** (1 / n_years) - 1) if n_years > 0 else None
+    annualized_volatility = float(port_returns.std(ddof=1) * np.sqrt(periods_per_year)) if len(port_returns) > 1 else None
+    calmar = float(annualized_return / max_drawdown) if (annualized_return is not None and max_drawdown > 0) else None
+
     # 基准统计
     bench_cum = np.cumprod(1 + bench_returns) if bench_returns is not None else None
 
@@ -170,6 +178,9 @@ def run_backtest(
         "excess_return": round(float(excess_cum[-1] - 1), 4),
         "sharpe": round(sharpe, 4) if sharpe is not None else None,
         "max_drawdown": round(max_drawdown, 4),
+        "annualized_return": round(annualized_return, 4) if annualized_return is not None else None,
+        "annualized_volatility": round(annualized_volatility, 4) if annualized_volatility is not None else None,
+        "calmar": round(calmar, 4) if calmar is not None else None,
         "win_rate": round(float((port_returns > 0).mean()), 4),
         "avg_holdings": round(float(np.mean(holdings_count)), 1),
         "last_holdings": last_holdings,
