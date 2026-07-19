@@ -190,7 +190,7 @@
       <div class="metric"><div class="label">净利润同比%</div><div class="value" id="fProfitYoy">-</div></div>
       <div class="metric"><div class="label">营收同比%</div><div class="value" id="fOrYoy">-</div></div>
       <div class="metric"><div class="label">毛利率%</div><div class="value" id="fGm">-</div></div>
-      <div class="metric"><div class="label">净利率%</div><div class="value" id="fNm">-</div></div>
+      <div class="metric"><div class="label">zscore百分位</div><div class="value" id="mPct">-</div></div>
     </section>
 
     <section class="panel">
@@ -316,6 +316,13 @@
       $("fOrYoy").textContent = fmt(d.or_yoy, 2);
       $("fGm").textContent = fmt(d.grossprofit_margin, 2);
       $("fNm").textContent = fmt(d.netprofit_margin, 2);
+    }
+
+    async function loadPercentile() {
+      const d = await getJson(`/api/stock-percentile?code=${encodeURIComponent(code)}`);
+      if (d.percentile != null) {
+        $("mPct").innerHTML = `${d.percentile}%<span class="subtle" style="font-size:13px;font-weight:400"> / ${d.total}</span>`;
+      }
     }
 
     function drawKline(rows) {
@@ -537,6 +544,7 @@
       // 先加载K线 + 成交量（不阻塞MASS数据）
       loadKline().catch(err => console.warn("kline load failed", err));
       loadFinancial().catch(err => console.warn("financial load failed", err));
+      loadPercentile().catch(err => console.warn("percentile load failed", err));
 
       const data = await getJson(`/api/history?code=${encodeURIComponent(code)}`);
       const rows = data.rows || [];

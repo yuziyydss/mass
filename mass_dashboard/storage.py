@@ -1478,3 +1478,27 @@ def correlation_matrix(db_path: Path, codes: list[str], lookback: int = 60) -> d
         "codes": present,
         "matrix": [[round(float(corr.loc[a, b]), 3) if pd.notna(corr.loc[a, b]) else None for b in present] for a in present],
     }
+
+
+def stock_zscore_percentile(db_path: Path, code: str) -> dict:
+    """某股最新 zscore 在全市场的百分位。"""
+    with _read_conn(db_path) as conn:
+        row = conn.execute("SELECT MAX(trade_date) AS d FROM factor_mass_daily").fetchone()
+        if not row or not row["d"]:
+            return {}
+        latest = row["d"]
+        stock = conn.execute("SELECT mass_zscore FROM factor_mass_daily WHERE trade_date=? AND code=?", (latest, code)).fetchone()
+        if not stock or stock["mass_zscore"] is None:
+            return {"trade_date": latest}
+        z = float(stock["mass_zscore"])
+        # 全市场排序百分位
+        all_z = conn.execute("SELECT mass_zscore FROM factor_mass_daily WHERE trade_date=? AND mass_zscore IS NOT NULL", (latest,)).fetchall()
+        vals = [float(r["mass_zscore"]) for r in all_z]
+        if not vals:
+            return {"trade_date": latest, "zscore": z}
+        vals.sort()
+        # 百分位 = 小于z的比例
+        import bisect
+        rank = bisect.bisect_left(vals, z)
+        pct = round(rank / len(vals) * 100, 2)
+        return {"trade_date": latest, "zscore": round(z, 4), "percentile": pct, "total": len(vals)}
