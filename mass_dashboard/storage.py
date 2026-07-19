@@ -1502,3 +1502,36 @@ def stock_zscore_percentile(db_path: Path, code: str) -> dict:
         rank = bisect.bisect_left(vals, z)
         pct = round(rank / len(vals) * 100, 2)
         return {"trade_date": latest, "zscore": round(z, 4), "percentile": pct, "total": len(vals)}
+
+
+def load_industry_relative_zscore(db_path: Path, trade_date: str) -> dict:
+    """个股zscore相对其行业的标准化值(行业内zscore)。
+    返回 {code: industry_z} , 排除行业内样本<5的。
+    """
+    with _read_conn(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT code, industry, mass_zscore
+            FROM factor_mass_daily
+            WHERE trade_date=? AND mass_zscore IS NOT NULL AND industry IS NOT NULL
+            """,
+            (trade_date,),
+        ).fetchall()
+    if not rows:
+        return {}
+    # 按行业分组算zscore
+    import numpy as np
+    by_ind: dict = {}
+    for r in rows:
+        by_ind.setdefault(r["industry"], []).append((r["code"], float(r["mass_zscore"])))
+    result = {}
+    for ind, lst in by_ind.items():
+        if len(lst) < 5:
+            continue
+        vals = np.array([x[1] for x in lst])
+        mu, sd = vals.mean(), vals.std()
+        if sd == 0 or np.isnan(sd):
+            continue
+        for code, z in lst:
+            result[code] = round(float((z - mu) / sd), 4)
+    return result
