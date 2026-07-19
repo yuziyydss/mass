@@ -1618,3 +1618,19 @@ def load_stock_moneyflow(db_path: Path, code: str, limit: int = 60) -> list[dict
                 try: it[k] = round(float(it[k]), 2)
                 except: pass
     return items
+
+
+def table_sizes(db_path: Path) -> list[dict]:
+    """各表磁盘占用(行数 + 估算字节)。"""
+    with _read_conn(db_path) as conn:
+        tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()]
+        result = []
+        for t in tables:
+            n = conn.execute(f"SELECT COUNT(*) as n FROM {t}").fetchone()["n"]
+            # dbstat 可估算页数,但未必可用;用 SUM(LENGTH) 粗略
+            try:
+                size = conn.execute(f"SELECT SUM(LENGTH(rowid)) AS s FROM {t}").fetchone()["s"] or 0
+            except Exception:
+                size = 0
+            result.append({"table": t, "rows": n, "bytes": int(size)})
+    return sorted(result, key=lambda x: -x["bytes"])
