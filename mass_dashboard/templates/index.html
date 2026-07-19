@@ -305,6 +305,16 @@
     }
     .empty-state .icon { font-size: 28px; display: block; margin-bottom: 8px; opacity: .5; }
 
+    .skeleton {
+      background: linear-gradient(90deg, #eef1ee 25%, #f5f7f4 50%, #eef1ee 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s infinite;
+      border-radius: 4px;
+      color: transparent;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    body.dark .skeleton { background:linear-gradient(90deg,#222825 25%,#2a312c 50%,#222825 75%); background-size:200% 100%; }
+
     .field-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
 
     @media (max-width: 1180px) {
@@ -653,6 +663,7 @@
     const fmt = (v, digits = 2) => v === null || v === undefined || Number.isNaN(Number(v)) ? "-" : Number(v).toFixed(digits);
     const cls = (v) => Number(v) >= 0 ? "pos" : "neg";
     const emptyState = (msg) => `<tr><td colspan="99"><div class="empty-state"><span class="icon">∅</span>${msg}</div></td></tr>`;
+    const skeleton = (cols, rows) => Array.from({length: rows||5}, () => `<tr><td class="skeleton" colspan="${cols}">loading</td></tr>`).join("");
 
     async function getJson(url, options) {
       const res = await fetch(url, options);
@@ -698,6 +709,7 @@
     }
 
     async function loadMassTable() {
+      $("massBody").innerHTML = skeleton(10, 8);
       const data = await getJson(`/api/mass?${queryParams()}`);
       state.page = data.page || 1;
       state.totalPages = data.total_pages || 1;
