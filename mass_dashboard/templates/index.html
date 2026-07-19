@@ -531,6 +531,7 @@
             <div class="subtle" style="margin:10px 0 6px">多因子 IC 横向对比</div>
             <div id="factorCompare" style="margin-bottom:12px"></div>
             <div id="factorSummary" style="margin-bottom:12px"></div>
+            <div id="monoInfo" class="subtle" style="margin-bottom:8px"></div>
             <div class="subtle" style="margin:14px 0 6px">因子衰减对比（各因子 IC 随周期）</div>
             <canvas id="decayChart" width="1140" height="180"></canvas>
             <div class="subtle" style="margin:10px 0 6px">因子间相关性矩阵</div>
@@ -1000,6 +1001,7 @@
         loadDistribution(factor);
         loadIcBox();
         loadDecay();
+        loadMono();
       } catch (e) {
         $("factorStatus").textContent = "错误: " + e.message;
       }
@@ -1010,12 +1012,10 @@
         const d = await getJson("/api/factor-decay");
         const rows = d.rows || [];
         if (!rows.length) return;
-        // 每个因子一条线：周期(5/10/20) 的 IC
         const periods = ["5","10","20"];
         const factors = rows.map(r => r.factor);
         const series = rows.map(r => periods.map(p => r[`ic_${p}`]));
         const colors = ["#0d7c66","#c45a2d","#7b3fa0","#d97706","#067647","#b42318","#3b82f6","#9333ea"];
-        // x轴是周期,每个因子一条线
         const canvas = $("decayChart");
         const ctx = canvas.getContext("2d");
         const w = canvas.width, h = canvas.height;
@@ -1040,10 +1040,19 @@
           let started = false;
           s.forEach((v,i)=>{ if(v==null) return; const x=xAt(i),y=yAt(v); if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y); });
           ctx.stroke();
-          // 图例
           ctx.fillStyle = colors[idx%colors.length]; ctx.font="10px Segoe UI";
           ctx.fillText(factors[idx], w-padR+8, padT+8+idx*14);
         });
+      } catch(e) {}
+    }
+
+    async function loadMono() {
+      try {
+        const d = await getJson(`/api/monotonicity?factor=${$("factorSelect").value}`);
+        if (d.error) { $("monoInfo").textContent = ""; return; }
+        const m = d.monotonicity;
+        const avg = d.quantile_avg || [];
+        $("monoInfo").innerHTML = `单调性指数: <b class="${cls(m||0)}">${m!=null?m:'-'}</b> | 分层均值: ${avg.map(a=>a!=null?a.toFixed(4):'-').join(' / ')} | 多空: ${cls(d.long_short_avg)}<b>${(d.long_short_avg*100).toFixed(3)}%</b>`;
       } catch(e) {}
     }
 
