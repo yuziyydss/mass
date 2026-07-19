@@ -521,6 +521,8 @@
             <div class="subtle" style="margin:10px 0 6px">多因子 IC 横向对比</div>
             <div id="factorCompare" style="margin-bottom:12px"></div>
             <div id="factorSummary" style="margin-bottom:12px"></div>
+            <div class="subtle" style="margin:10px 0 6px">因子间相关性矩阵</div>
+            <div id="factorCorrHeat" style="margin-bottom:12px"></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
               <div>
                 <div class="subtle" style="margin-bottom:6px">IC 衰减曲线（各周期 IC 均值）</div>
@@ -912,6 +914,30 @@
       });
       html += "</table>";
       $("factorCompare").innerHTML = html;
+      // 因子相关性热力图
+      loadFactorCorr();
+    }
+
+    async function loadFactorCorr() {
+      try {
+        const d = await getJson("/api/factor-correlation?factors=mass_zscore,momentum_5,momentum_20,volatility_20,turnover_20");
+        if (d.error) { $("factorCorrHeat").innerHTML = `<span class="subtle">${d.error}</span>`; return; }
+        const names = d.names || [];
+        const m = d.matrix || [];
+        let html = `<table style="font-size:11px;border-collapse:collapse"><thead><tr><th></th>`;
+        names.forEach(n => html += `<th style="padding:2px 4px;writing-mode:vertical-lr">${n}</th>`);
+        html += `</tr></thead><tbody>`;
+        names.forEach((a, i) => {
+          html += `<tr><td style="padding:2px 6px">${a}</td>`;
+          m[i].forEach(v => {
+            const color = v == null ? "#f0f1f0" : (v >= 0 ? `rgba(13,124,102,${Math.min(0.9,Math.abs(v)+0.1)})` : `rgba(180,35,24,${Math.min(0.9,Math.abs(v)+0.1)})`);
+            html += `<td style="background:${color};color:#fff;text-align:center;padding:3px 5px">${v!=null?v.toFixed(2):''}</td>`;
+          });
+          html += "</tr>";
+        });
+        html += "</tbody></table>";
+        $("factorCorrHeat").innerHTML = html;
+      } catch(e) { $("factorCorrHeat").innerHTML = ""; }
     }
 
     async function loadFactorAnalysis() {
