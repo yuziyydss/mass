@@ -344,6 +344,9 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     self._send_json({"rows": factor_analysis.compare_factors(config.db_path, specs)})
                 elif path == "/api/factor-distribution":
                     self._send_json(factor_analysis.factor_distribution(config.db_path, factor_col=qs.get("factor", ["mass_zscore"])[0]))
+                elif path == "/api/factor-returns":
+                    factors = qs.get("factors", ["mass_zscore,momentum_5,momentum_20,volatility_20,turnover_20"])[0].split(",")
+                    self._send_json({"rows": factor_analysis.factor_returns(config.db_path, [f.strip() for f in factors], int(qs.get("days", ["5"])[0]))})
                 elif path == "/api/neutralized-ic":
                     self._send_json(factor_analysis.neutralized_ic(config.db_path, factor_col=qs.get("factor", ["mass_zscore"])[0], forward_days=int(qs.get("days", ["5"])[0])))
                 elif path == "/api/factor-synth":

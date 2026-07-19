@@ -491,3 +491,40 @@ def neutralized_ic(db_path, factor_col: str = "mass_zscore", forward_days: int =
         "orig_ics": [round(x, 4) for x in orig_ics],
         "neut_ics": [round(x, 4) for x in neut_ics],
     }
+
+
+def factor_returns(db_path, factors: list[str], forward_days: int = 5) -> list[dict]:
+    """各因子的分层多空收益对比(单因子贡献归因)。
+    对每个因子,算分5层多空平均收益,看哪个因子贡献最大。
+    """
+    from . import momentum
+    results = []
+    close_panel = None
+    for name in factors:
+        if name.startswith("momentum"):
+            panel = momentum.compute_momentum_panel(db_path, int(name.split("_")[1]))
+        elif name.startswith("volatility"):
+            panel = momentum.compute_volatility_panel(db_path, int(name.split("_")[1]))
+        elif name.startswith("turnover"):
+            panel = momentum.compute_turnover_panel(db_path, int(name.split("_")[1]))
+        elif name in ("mass_zscore","mass_neu","mass_raw"):
+            panel = storage.load_factor_panel(db_path, name)
+        else:
+            continue
+        if panel.empty:
+            continue
+        if close_panel is None:
+            close_panel = storage.load_close_panel(db_path, panel.index[0], panel.index[-1])
+        common = panel.index.intersection(close_panel.index).tolist()
+        if len(common) < 3:
+            continue
+        q = compute_quantile_returns(panel.loc[common], close_panel.loc[common], forward_days, 5)
+        if not q:
+            continue
+        results.append({
+            "factor": name,
+            "long_short_avg": q.get("long_short_avg"),
+            "n_periods": q.get("n_periods"),
+        })
+    results.sort(key=lambda x: abs(x.get("long_short_avg") or 0), reverse=True)
+    return results
