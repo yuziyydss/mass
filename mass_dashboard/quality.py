@@ -2,6 +2,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional
+
 import pandas as pd
 
 
@@ -37,8 +41,29 @@ def check_mass_quality(df: pd.DataFrame, min_rows: int) -> list[tuple[str, str]]
             if null_ratio > 0.5:
                 alerts.append(("WARN", f"{label} 缺失比例偏高：{null_ratio:.2%}"))
         else:
-            # 列不存在：schema 迁移可能没生效
             alerts.append(("ERROR", f"{label} 字段缺失（factor_mass_daily 无 {col} 列，检查 schema 迁移）"))
 
     return alerts
+
+
+def check_data_freshness(db_path: Path, max_stale_days: int = 3) -> Optional[tuple[str, str]]:
+    """检查 MASS 数据是否陈旧。返回 (level, msg) 或 None。
+
+    最新 factor_mass_daily 交易日距今超过 max_stale_days 天则告警。
+    """
+    from . import storage
+    latest = storage.latest_trade_date(db_path)
+    if not latest:
+        return ("ERROR", "factor_mass_daily 表为空，无任何 MASS 结果")
+    try:
+        latest_dt = datetime.strptime(latest, "%Y%m%d")
+    except ValueError:
+        return ("WARN", f"最新交易日格式异常: {latest}")
+    today = datetime.now()
+    # 用自然日比较（交易日历不可得时粗略）
+    stale_days = (today - latest_dt).days
+    if stale_days > max_stale_days:
+        return ("WARN", f"MASS 数据陈旧：最新交易日 {latest}，距今 {stale_days} 天（>{max_stale_days}）")
+    return None
+
 

@@ -150,6 +150,17 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                     self._send_html(template.render(code=code, profile=profile or {}))
                 elif path == "/api/summary":
                     self._send_json(storage.get_summary(config.db_path, qs.get("date", [None])[0]))
+                elif path == "/api/health":
+                    from .quality import check_data_freshness
+                    fresh = check_data_freshness(config.db_path)
+                    summary = storage.get_summary(config.db_path)
+                    latest = summary.get("trade_date")
+                    self._send_json({
+                        "latest_date": latest,
+                        "row_count": summary.get("row_count", 0),
+                        "alert": {"level": fresh[0], "message": fresh[1]} if fresh else None,
+                        "healthy": fresh is None,
+                    })
                 elif path == "/api/dates":
                     self._send_json({"dates": storage.list_trade_dates(config.db_path)})
                 elif path == "/api/industries":
