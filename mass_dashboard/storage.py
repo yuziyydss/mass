@@ -1183,3 +1183,56 @@ def query_bottom_conditions(db_path: Path, trade_date: Optional[str] = None, min
             (trade_date, min_conditions, limit),
         ).fetchall()
     return {"trade_date": trade_date, "rows": [dict(row) for row in rows]}
+
+
+# ── 因子分析：面板数据加载（透视成 日期×股票 矩阵）──
+
+
+def load_close_panel(db_path: Path, start_date: str, end_date: str) -> pd.DataFrame:
+    """加载收盘价面板：行=trade_date，列=code，值=close。
+    用于前瞻收益和因子分层回测。
+    """
+    with _read_conn(db_path) as conn:
+        df = pd.read_sql_query(
+            """
+            SELECT trade_date, code, close
+            FROM daily_bars
+            WHERE trade_date BETWEEN ? AND ?
+              AND close IS NOT NULL
+            ORDER BY trade_date, code
+            """,
+            conn,
+            params=[start_date, end_date],
+        )
+    if df.empty:
+        return pd.DataFrame()
+    df["close"] = pd.to_numeric(df["close"], errors="coerce")
+    df = df.dropna(subset=["close"])
+    # 透视：行=日期，列=股票代码，值=收盘价
+    panel = df.pivot(index="trade_date", columns="code", values="close")
+    panel.index = panel.index.astype(str)
+    return panel.sort_index()
+
+
+def load_factor_panel(db_path: Path, factor_col: str = "mass_zscore") -> pd.DataFrame:
+    """加载因子值面板：行=trade_date，列=code，值=因子值。
+    factor_col 默认 mass_zscore（中性化后的标准化值）。
+    """
+    valid_cols = {"mass_raw", "mass_clip", "mass_neu", "mass_zscore"}
+    if factor_col not in valid_cols:
+        factor_col = "mass_zscore"
+    with _read_conn(db_path) as conn:
+        df = pd.read_sql_query(
+            f"""
+            SELECT trade_date, code, {factor_col} AS factor
+            FROM factor_mass_daily
+            WHERE {factor_col} IS NOT NULL
+            ORDER BY trade_date, code
+            """,
+            conn,
+        )
+    if df.empty:
+        return pd.DataFrame()
+    panel = df.pivot(index="trade_date", columns="code", values="factor")
+    panel.index = panel.index.astype(str)
+    return panel.sort_index()

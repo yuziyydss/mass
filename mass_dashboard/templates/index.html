@@ -461,6 +461,36 @@
         </div>
       </div>
 
+      <div class="panel">
+        <div class="panel-head">
+          <h2>因子有效性分析</h2>
+          <div class="subtle">IC/IR + 分层回测（对齐聚宽因子分析）</div>
+        </div>
+        <div style="padding:10px 14px">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+            <label class="subtle">因子:</label>
+            <select id="factorSelect">
+              <option value="mass_zscore" selected>mass_zscore (中性化)</option>
+              <option value="mass_neu">mass_neu</option>
+              <option value="mass_raw">mass_raw</option>
+            </select>
+            <button id="factorAnalyzeBtn" class="primary" style="height:28px">分析</button>
+            <span id="factorStatus" class="subtle">点"分析"开始计算</span>
+          </div>
+          <div id="factorSummary" style="margin-bottom:8px"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <div class="subtle" style="margin-bottom:4px">IC 时序（5日前瞻）</div>
+              <canvas id="icChart" width="460" height="200"></canvas>
+            </div>
+            <div>
+              <div class="subtle" style="margin-bottom:4px">分层累计净值</div>
+              <canvas id="quantileChart" width="460" height="200"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div>
         <div class="panel">
           <div class="panel-head"><h2>运行进度</h2></div>
@@ -652,6 +682,89 @@
       });
     }
 
+    function drawLineChart(canvasId, series, colors, labels) {
+      const canvas = $(canvasId);
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      // 找所有数据的范围
+      let allVals = [];
+      series.forEach(s => s.forEach(v => { if (Number.isFinite(v)) allVals.push(v); }));
+      if (allVals.length < 2) return;
+      const minY = Math.min(...allVals), maxY = Math.max(...allVals);
+      const span = Math.max(0.001, maxY - minY);
+      const padL = 40, padR = 12, padT = 12, padB = 24;
+      const n = series[0].length;
+      const xAt = i => padL + (n <= 1 ? 0 : i * (w - padL - padR) / (n - 1));
+      const yAt = v => padT + (1 - (v - minY) / span) * (h - padT - padB);
+      // 网格
+      ctx.strokeStyle = "#eef1ee"; ctx.lineWidth = 1;
+      for (let i = 0; i <= 3; i++) {
+        const y = padT + i * (h - padT - padB) / 3;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      }
+      // 0线（如果在范围内）
+      if (minY < 0 && maxY > 0) {
+        const y0 = yAt(0);
+        ctx.strokeStyle = "#999"; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(padL, y0); ctx.lineTo(w - padR, y0); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // 各条曲线
+      series.forEach((s, idx) => {
+        ctx.strokeStyle = colors[idx % colors.length];
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        s.forEach((v, i) => {
+          const x = xAt(i), y = yAt(v);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+      // Y轴标签
+      ctx.fillStyle = "#6b746f"; ctx.font = "10px Segoe UI";
+      ctx.fillText(maxY.toFixed(2), 4, padT + 8);
+      ctx.fillText(minY.toFixed(2), 4, h - padB);
+    }
+
+    async function loadFactorAnalysis() {
+      const factor = $("factorSelect") ? $("factorSelect").value : "mass_zscore";
+      $("factorStatus").textContent = "计算中…";
+      try {
+        const data = await getJson(`/api/factor-ic?factor=${factor}`);
+        if (data.error) {
+          $("factorStatus").textContent = "错误: " + data.error;
+          return;
+        }
+        // IC 汇总表
+        const sm = data.ic_summary || [];
+        let html = "<table style=\"width:100%;font-size:12px\"><tr><th>前瞻</th><th>IC均值</th><th>IR</th><th>胜率</th><th>期数</th></tr>";
+        sm.forEach(s => {
+          html += `<tr><td class="num">${s.forward_days}日</td><td class="num ${cls(s.ic_mean)}">${fmt(s.ic_mean,3)}</td><td class="num ${cls(s.ir)}">${fmt(s.ir,2)}</td><td class="num">${fmt(s.win_rate*100,1)}%</td><td class="num">${s.n_periods}</td></tr>`;
+        });
+        html += "</table>";
+        $("factorSummary").innerHTML = html;
+        $("factorStatus").textContent = `数据范围: ${data.date_range[0]} ~ ${data.date_range[1]}（共 ${data.n_dates} 期）`;
+
+        // IC 时序图（IC + 累计IC）
+        if (data.ic_values && data.ic_values.length) {
+          drawLineChart("icChart", [data.ic_values, data.cum_ic], ["#0d7c66", "#c45a2d"], ["IC", "cumIC"]);
+        }
+        // 分层累计净值图
+        const q = data.quantile;
+        if (q && q.quantile_cum) {
+          const series = [0,1,2,3,4].map(i => q.quantile_cum["q"+i] || []);
+          series.push(q.long_short_cum);
+          drawLineChart("quantileChart", series,
+            ["#b42318","#d97706","#6b746f","#0d7c66","#067647","#c45a2d"],
+            ["q1","q2","q3","q4","q5","多空"]);
+        }
+      } catch (e) {
+        $("factorStatus").textContent = "错误: " + e.message;
+      }
+    }
+
     async function loadIndustry() {
       const data = await getJson(`/api/industry?date=${selectedDate()}`);
       const rows = data.rows.slice(0, 18);
@@ -706,6 +819,9 @@
     $("industrySelect").addEventListener("change", () => refreshMain(true));
     $("directionSelect").addEventListener("change", () => refreshMain(true));
     $("searchBtn").addEventListener("click", () => refreshMain(true));
+    if ($("factorAnalyzeBtn")) {
+      $("factorAnalyzeBtn").addEventListener("click", () => loadFactorAnalysis());
+    }
     $("searchInput").addEventListener("keydown", (event) => {
       if (event.key === "Enter") refreshMain(true);
     });

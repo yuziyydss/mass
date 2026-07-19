@@ -17,6 +17,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from . import storage
 from .config import AppConfig
 from .scheduler import DashboardScheduler
+from . import factor_analysis
 
 LOGGER = logging.getLogger("mass_dashboard.web")
 
@@ -194,6 +195,20 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                             trade_date=qs.get("date", [None])[0],
                             min_conditions=int(qs.get("min", ["2"])[0]),
                             limit=int(qs.get("limit", ["100"])[0]),
+                        )
+                    )
+                elif path == "/api/factor-ic":
+                    self._send_json(
+                        factor_analysis.analyze_factor(
+                            config.db_path,
+                            factor_col=qs.get("factor", ["mass_zscore"])[0],
+                        )
+                    )
+                elif path == "/api/factor-quantile":
+                    self._send_json(
+                        factor_analysis.analyze_factor(
+                            config.db_path,
+                            factor_col=qs.get("factor", ["mass_zscore"])[0],
                         )
                     )
                 else:
