@@ -345,6 +345,19 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     self._send_json({"rows": factor_analysis.compare_factors(config.db_path, specs)})
                 elif path == "/api/factor-distribution":
                     self._send_json(factor_analysis.factor_distribution(config.db_path, factor_col=qs.get("factor", ["mass_zscore"])[0]))
+                elif path == "/api/backup":
+                    import shutil
+                    from datetime import datetime as _dt
+                    backup_dir = config.data_dir / "backups"
+                    backup_dir.mkdir(parents=True, exist_ok=True)
+                    stamp = _dt.now().strftime("%Y%m%d_%H%M%S")
+                    dest = backup_dir / f"mass_dashboard_{stamp}.db"
+                    # checkpoint WAL into main db first, then copy
+                    with storage.connect(config.db_path) as conn:
+                        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    shutil.copy2(config.db_path, dest)
+                    size = dest.stat().st_size
+                    self._send_json({"ok": True, "file": str(dest), "size": size})
                 elif path == "/api/factor-export":
                     import csv, io
                     factor = qs.get("factor", ["mass_zscore"])[0]
