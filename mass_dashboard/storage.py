@@ -1227,6 +1227,7 @@ def query_bottom_conditions(db_path: Path, trade_date: Optional[str] = None, min
 
 
 _close_panel_cache: dict = {}  # (start,end) -> DataFrame, 进程内缓存
+_cache_stats = {"hits": 0, "misses": 0}
 
 
 def load_close_panel(db_path: Path, start_date: str, end_date: str) -> pd.DataFrame:
@@ -1236,7 +1237,9 @@ def load_close_panel(db_path: Path, start_date: str, end_date: str) -> pd.DataFr
     key = (start_date, end_date)
     cached = _close_panel_cache.get(key)
     if cached is not None:
+        _cache_stats["hits"] += 1
         return cached
+    _cache_stats["misses"] += 1
     with _read_conn(db_path) as conn:
         df = pd.read_sql_query(
             """

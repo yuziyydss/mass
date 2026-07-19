@@ -197,6 +197,10 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
 </body></html>""")
                 elif path == "/api/summary":
                     self._send_json(storage.get_summary(config.db_path, qs.get("date", [None])[0]))
+                elif path == "/api/cache-stats":
+                    s = storage._cache_stats
+                    total = s["hits"] + s["misses"]
+                    self._send_json({"hits": s["hits"], "misses": s["misses"], "hit_rate": round(s["hits"]/total*100, 2) if total else 0})
                 elif path == "/api/table-sizes":
                     self._send_json({"tables": storage.table_sizes(config.db_path)})
                 elif path == "/api/integrity":
