@@ -175,6 +175,15 @@ def run_backtest(
     peak = np.maximum.accumulate(port_cum)
     drawdowns = (peak - port_cum) / peak
     max_drawdown = float(drawdowns.max()) if len(drawdowns) > 0 else 0.0
+    # 最长回撤期: 连续处于回撤(>0)的最大持续期数
+    longest_dd = 0
+    cur = 0
+    for d in drawdowns:
+        if d > 1e-9:
+            cur += 1
+            longest_dd = max(longest_dd, cur)
+        else:
+            cur = 0
 
     # 年化收益 + 年化波动率 + Calmar
     periods_per_year = 252 / hold_days
@@ -205,6 +214,8 @@ def run_backtest(
         "excess_return": round(float(excess_cum[-1] - 1), 4),
         "sharpe": round(sharpe, 4) if sharpe is not None else None,
         "max_drawdown": round(max_drawdown, 4),
+        "longest_drawdown_periods": int(longest_dd),
+        "drawdown_series": [round(float(d), 6) for d in drawdowns],
         "annualized_return": round(annualized_return, 4) if annualized_return is not None else None,
         "annualized_volatility": round(annualized_volatility, 4) if annualized_volatility is not None else None,
         "calmar": round(calmar, 4) if calmar is not None else None,
