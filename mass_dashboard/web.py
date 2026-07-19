@@ -7,6 +7,7 @@ import hmac
 import json
 import logging
 import math
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -25,6 +26,15 @@ from . import financial
 import mass_t
 
 LOGGER = logging.getLogger("mass_dashboard.web")
+
+# 重API并发限制(因子分析/回测较慢,避免并发挤爆CPU)
+_heavy_api_sem = threading.Semaphore(2)
+_HEAVY_PATHS = {"/api/factor-ic", "/api/factor-quantile", "/api/factor-compare",
+                "/api/factor-decay", "/api/ic-heatmap", "/api/neutralized-ic",
+                "/api/factor-returns", "/api/factor-synth", "/api/backtest",
+                "/api/portfolio", "/api/portfolio-concentration", "/api/ic-ci",
+                "/api/ic-after-clip", "/api/ls-sharpe", "/api/monotonicity",
+                "/api/ic-boxplot", "/api/rolling-ic"}
 
 
 def json_default(value):
@@ -141,6 +151,13 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
             parsed = urlparse(self.path)
             qs = parse_qs(parsed.query)
             path = parsed.path
+            # 重API并发限制
+            sem_acquired = False
+            if path in _HEAVY_PATHS:
+                if not _heavy_api_sem.acquire(blocking=False):
+                    self._send_json({"error": "服务器忙，重API并发已满，请稍后重试"}, status=503)
+                    return
+                sem_acquired = True
             try:
                 if path == "/":
                     latest_date = storage.latest_trade_date(config.db_path)
@@ -527,6 +544,9 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
             except Exception as err:
                 LOGGER.exception("GET %s failed", path)
                 self._send_json({"error": str(err)}, status=500)
+            finally:
+                if sem_acquired:
+                    _heavy_api_sem.release()
 
         def do_POST(self):
             if not self._require_auth():
