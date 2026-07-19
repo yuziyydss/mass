@@ -193,6 +193,13 @@ def run_backtest(
     annualized_volatility = float(port_returns.std(ddof=1) * np.sqrt(periods_per_year)) if len(port_returns) > 1 else None
     calmar = float(annualized_return / max_drawdown) if (annualized_return is not None and max_drawdown > 0) else None
 
+    # 月度收益：把换仓期收益聚合到自然月
+    if rebalance_dates:
+        ts = pd.Series(port_returns, index=pd.to_datetime(rebalance_dates, format="%Y%m%d"))
+        monthly = (1 + ts).groupby(ts.index.to_period("M")).apply(lambda x: float((1+x).prod()-1) if len(x) else 0.0)
+        monthly_data = [{"month": str(p), "return": round(float(v), 6), "n": int((ts.index.to_period("M")==p).sum())} for p, v in monthly.items()]
+    else:
+        monthly_data = []
     # 基准统计
     bench_cum = np.cumprod(1 + bench_returns) if bench_returns is not None else None
 
@@ -216,6 +223,7 @@ def run_backtest(
         "max_drawdown": round(max_drawdown, 4),
         "longest_drawdown_periods": int(longest_dd),
         "drawdown_series": [round(float(d), 6) for d in drawdowns],
+        "monthly_returns": monthly_data,
         "annualized_return": round(annualized_return, 4) if annualized_return is not None else None,
         "annualized_volatility": round(annualized_volatility, 4) if annualized_volatility is not None else None,
         "calmar": round(calmar, 4) if calmar is not None else None,
