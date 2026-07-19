@@ -185,6 +185,14 @@
       <div class="metric"><div class="label">历史期数</div><div class="value" id="mCount">-</div></div>
     </section>
 
+    <section class="metrics">
+      <div class="metric"><div class="label">ROE(最新报告期)</div><div class="value" id="fRoe">-</div></div>
+      <div class="metric"><div class="label">净利润同比%</div><div class="value" id="fProfitYoy">-</div></div>
+      <div class="metric"><div class="label">营收同比%</div><div class="value" id="fOrYoy">-</div></div>
+      <div class="metric"><div class="label">毛利率%</div><div class="value" id="fGm">-</div></div>
+      <div class="metric"><div class="label">净利率%</div><div class="value" id="fNm">-</div></div>
+    </section>
+
     <section class="panel">
       <h2>K线 + 成交量 + MA</h2>
       <div class="chart-box">
@@ -292,13 +300,22 @@
       const rows = data.rows || [];
       if (rows.length < 5) return;
       drawKline(rows);
-      // RSI + MACD
       const closes = rows.map(r => Number(r.close));
       const rsi = calcRSI(closes, 14);
       drawIndicator("rsiChart", [rsi], ["#7b3fa0"], null, 0, 100,
         [{v: 30, color: "#067647"}, {v: 70, color: "#b42318"}]);
       const macd = calcMACD(closes);
       drawIndicator("macdChart", [macd.dif, macd.dea], ["#0d7c66", "#c45a2d"], macd.hist, null, null, null);
+    }
+
+    async function loadFinancial() {
+      const d = await getJson(`/api/financial?code=${encodeURIComponent(code)}`);
+      if (d.error || !d.end_date) return;
+      $("fRoe").textContent = fmt(d.roe, 2);
+      $("fProfitYoy").textContent = fmt(d.q_profit_yoy, 2);
+      $("fOrYoy").textContent = fmt(d.or_yoy, 2);
+      $("fGm").textContent = fmt(d.grossprofit_margin, 2);
+      $("fNm").textContent = fmt(d.netprofit_margin, 2);
     }
 
     function drawKline(rows) {
@@ -519,6 +536,7 @@
     async function init() {
       // 先加载K线 + 成交量（不阻塞MASS数据）
       loadKline().catch(err => console.warn("kline load failed", err));
+      loadFinancial().catch(err => console.warn("financial load failed", err));
 
       const data = await getJson(`/api/history?code=${encodeURIComponent(code)}`);
       const rows = data.rows || [];

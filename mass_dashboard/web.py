@@ -20,6 +20,8 @@ from .scheduler import DashboardScheduler
 from . import factor_analysis
 from . import backtest
 from . import momentum
+from . import financial
+import mass_t
 
 LOGGER = logging.getLogger("mass_dashboard.web")
 
@@ -68,6 +70,8 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
         loader=FileSystemLoader(template_dir),
         autoescape=select_autoescape(["html", "xml"]),
     )
+    # 按需初始化 tushare client（财务指标等按股拉取用）
+    _pro = mass_t.init_tushare_client(config.tushare_token) if config.tushare_token else None
 
     class DashboardHandler(BaseHTTPRequestHandler):
         server_version = "MassDashboard/0.1"
@@ -191,6 +195,12 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                     code = qs.get("code", [""])[0]
                     limit = int(qs.get("limit", ["250"])[0])
                     self._send_json({"rows": storage.load_kline(config.db_path, code, limit)})
+                elif path == "/api/financial":
+                    code = qs.get("code", [""])[0]
+                    if not code or not _pro:
+                        self._send_json({"error": "需要 code 和 tushare token"})
+                    else:
+                        self._send_json(financial.fetch_financial(_pro, code))
                 elif path == "/api/jobs":
                     self._send_json({"rows": storage.recent_jobs(config.db_path)})
                 elif path == "/api/progress":
