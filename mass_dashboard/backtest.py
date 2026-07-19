@@ -194,6 +194,8 @@ def run_backtest(
         "direction": direction,
         "n_periods": len(portfolio_returns),
         "rebalance_dates": rebalance_dates,
+        "rebalance_history": [{"date": d, "holdings": n, "return": round(float(r), 6)}
+                              for d, n, r in zip(rebalance_dates, holdings_count, port_returns)],
         "portfolio_cum": [round(float(x), 6) for x in port_cum],
         "benchmark_cum": [round(float(x), 6) for x in bench_cum] if bench_cum is not None else [],
         "excess_cum": [round(float(x), 6) for x in excess_cum],
