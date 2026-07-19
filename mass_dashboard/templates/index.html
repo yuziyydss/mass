@@ -450,6 +450,8 @@
               <button id="factorAnalyzeBtn" class="primary" style="height:30px">分析</button>
               <span id="factorStatus" class="subtle">点"分析"开始计算</span>
             </div>
+            <div class="subtle" style="margin:10px 0 6px">多因子 IC 横向对比</div>
+            <div id="factorCompare" style="margin-bottom:12px"></div>
             <div id="factorSummary" style="margin-bottom:12px"></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
               <div>
@@ -794,9 +796,27 @@
       });
     }
 
+    async function loadFactorCompare() {
+      const data = await getJson("/api/factor-compare");
+      const rows = data.rows || [];
+      if (!rows.length) { $("factorCompare").innerHTML = ""; return; }
+      let html = `<table style="width:100%;font-size:12px"><tr><th>因子</th><th>IC(5日)</th><th>IR(5日)</th><th>IC(10日)</th><th>IR(10日)</th><th>样本期数</th></tr>`;
+      rows.forEach(r => {
+        html += `<tr><td>${r.factor}</td>
+          <td class="num ${cls(r.ic_5)}">${r.ic_5!=null?fmt(r.ic_5,4):'-'}</td>
+          <td class="num ${cls(r.ir_5)}">${r.ir_5!=null?fmt(r.ir_5,2):'-'}</td>
+          <td class="num ${cls(r.ic_10)}">${r.ic_10!=null?fmt(r.ic_10,4):'-'}</td>
+          <td class="num ${cls(r.ir_10)}">${r.ir_10!=null?fmt(r.ir_10,2):'-'}</td>
+          <td class="num">${r.n_dates}</td></tr>`;
+      });
+      html += "</table>";
+      $("factorCompare").innerHTML = html;
+    }
+
     async function loadFactorAnalysis() {
       const factor = $("factorSelect") ? $("factorSelect").value : "mass_zscore";
       $("factorStatus").textContent = "计算中…";
+      await loadFactorCompare();
       try {
         const data = await getJson(`/api/factor-ic?factor=${factor}`);
         if (data.error) { $("factorStatus").textContent = "错误: " + data.error; return; }

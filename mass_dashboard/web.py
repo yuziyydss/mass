@@ -237,6 +237,12 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                     self._send_json(self._analyze_factor(config, qs))
                 elif path == "/api/factor-quantile":
                     self._send_json(self._analyze_factor(config, qs))
+                elif path == "/api/factor-compare":
+                    specs = [
+                        {"name": "mass_zscore"}, {"name": "mass_neu"}, {"name": "mass_raw"},
+                        {"name": "momentum_5"}, {"name": "momentum_20"}, {"name": "momentum_60"},
+                    ]
+                    self._send_json({"rows": factor_analysis.compare_factors(config.db_path, specs)})
                 elif path == "/api/backtest":
                     self._send_json(
                         backtest.run_backtest(

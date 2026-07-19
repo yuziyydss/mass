@@ -271,3 +271,51 @@ def analyze_factor(
         "main_forward_days": main_N,
         "quantile": quantile_result,
     }
+
+
+def compare_factors(db_path, factor_specs: list[dict]) -> list[dict]:
+    """横向对比多个因子的 IC/IR。factor_specs: [{name, panel}] 或内置因子名。
+
+    返回每个因子的简明 IC 汇总（5日/10日 IC均值 + IR）。
+    """
+    from . import momentum
+    results = []
+    # 先加载 close_panel 一次复用
+    with storage._read_conn(db_path) as conn:
+        row = conn.execute("SELECT MIN(trade_date) AS mn, MAX(trate_date) AS mx FROM daily_bars".replace("trate_date","trade_date")).fetchone()
+    if not row or not row["mn"]:
+        return []
+    close_panel = storage.load_close_panel(db_path, row["mn"], row["mx"])
+    if close_panel.empty:
+        return []
+
+    for spec in factor_specs:
+        name = spec.get("name", "?")
+        panel = spec.get("panel")
+        if panel is None:
+            # 内置因子
+            if name.startswith("momentum"):
+                parts = name.split("_")
+                period = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
+                panel = momentum.compute_momentum_panel(db_path, period)
+            elif name in ("mass_zscore", "mass_neu", "mass_raw"):
+                panel = storage.load_factor_panel(db_path, name)
+            else:
+                continue
+        if panel is None or panel.empty:
+            continue
+        common = panel.index.intersection(close_panel.index).tolist()
+        if len(common) < 3:
+            continue
+        fwd = compute_forward_returns(close_panel.loc[common], [5, 10])
+        ic = compute_ic_series(panel.loc[common], fwd)
+        summary = summarize_ic(ic)
+        results.append({
+            "factor": name,
+            "ic_5": summary[0].get("ic_mean") if len(summary) > 0 else None,
+            "ir_5": summary[0].get("ir") if len(summary) > 0 else None,
+            "ic_10": summary[1].get("ic_mean") if len(summary) > 1 else None,
+            "ir_10": summary[1].get("ir") if len(summary) > 1 else None,
+            "n_dates": len(common),
+        })
+    return results
