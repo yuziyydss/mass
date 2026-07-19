@@ -204,6 +204,9 @@ def init_db(db_path: Path) -> None:
             CREATE INDEX IF NOT EXISTS idx_daily_bars_code_date
             ON daily_bars (code, trade_date);
 
+            CREATE INDEX IF NOT EXISTS idx_daily_bars_date
+            ON daily_bars (trade_date);
+
             CREATE TABLE IF NOT EXISTS job_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 job_name TEXT NOT NULL,
