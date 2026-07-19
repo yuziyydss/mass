@@ -201,6 +201,29 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                         self._send_json({"error": "需要 code 和 tushare token"})
                     else:
                         self._send_json(financial.fetch_financial(_pro, code))
+                elif path == "/api/export":
+                    import csv, io
+                    rows = storage.query_mass(
+                        config.db_path,
+                        trade_date=qs.get("date", [None])[0],
+                        limit=int(qs.get("limit", ["5000"])[0]),
+                        industry=qs.get("industry", [""])[0],
+                        keyword=qs.get("q", [""])[0],
+                        direction=qs.get("direction", ["desc"])[0],
+                    )
+                    buf = io.StringIO()
+                    writer = csv.writer(buf)
+                    cols = ["trade_date","code","name","industry","total_mkt_cap","pe","pb","dv_ratio","mass_raw","mass_neu","mass_zscore"]
+                    writer.writerow(cols)
+                    for r in rows:
+                        writer.writerow([r.get(c, "") for c in cols])
+                    body = buf.getvalue().encode("utf-8-sig")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition", "attachment; filename=mass_export.csv")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
                 elif path == "/api/watchlist":
                     action = qs.get("action", ["get"])[0]
                     if action == "delete":

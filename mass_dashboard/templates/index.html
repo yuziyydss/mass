@@ -421,6 +421,7 @@
             <input id="searchInput" placeholder="查询股票代码或名称，例如 600519 / 贵州茅台">
             <button id="clearBtn">清空筛选</button>
             <button id="searchBtn" class="primary">查询</button>
+            <button id="exportBtn">导出CSV</button>
           </div>
           <div class="table-wrap">
             <table>
@@ -1005,6 +1006,16 @@
     $("industrySelect").addEventListener("change", () => { if (document.getElementById("tab-mass").classList.contains("active")) refreshMain(true); });
     $("directionSelect").addEventListener("change", () => { state.page = 1; loadMassTable(); });
     $("searchBtn").addEventListener("click", () => { state.page = 1; loadMassTable(); });
+    if ($("exportBtn")) $("exportBtn").addEventListener("click", () => {
+      const params = new URLSearchParams({
+        date: selectedDate(),
+        limit: "5000",
+        direction: $("directionSelect").value,
+        industry: $("industrySelect").value,
+        q: $("searchInput").value.trim(),
+      });
+      window.location.href = `/api/export?${params}`;
+    });
     if ($("factorAnalyzeBtn")) $("factorAnalyzeBtn").addEventListener("click", () => loadFactorAnalysis());
     if ($("backtestBtn")) $("backtestBtn").addEventListener("click", () => runBacktest());
     if ($("wlAddBtn")) $("wlAddBtn").addEventListener("click", async () => {
