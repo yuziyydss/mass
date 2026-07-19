@@ -953,3 +953,19 @@ def ic_confidence_interval(db_path, factor_col: str = "mass_zscore", forward_day
         "t_stat": round(t_stat, 3),
         "significant": (lo > 0) or (hi < 0),  # CI不含0=显著
     }
+
+
+def portfolio_concentration_check(db_path, components: list[dict], top_n: int = 30, max_ind_pct: float = 30.0) -> dict:
+    """组合行业集中度预警：某行业占比超阈值告警。"""
+    pf = build_portfolio(db_path, components, top_n)
+    if "error" in pf:
+        return pf
+    exposure = pf.get("industry_exposure", [])
+    alerts = [{"industry": e["industry"], "pct": e["pct"], "count": e["count"]} for e in exposure if e["pct"] > max_ind_pct]
+    return {
+        "date": pf["date"],
+        "max_industry_pct": max(e["pct"] for e in exposure) if exposure else 0,
+        "alerts": alerts,
+        "exposure": exposure,
+        "n_alerts": len(alerts),
+    }
