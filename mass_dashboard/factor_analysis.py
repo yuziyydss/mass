@@ -778,3 +778,36 @@ def rolling_ic_stability(db_path, factor_col: str = "mass_zscore", forward_days:
         "rolling_std": [round(float(x), 4) if pd.notna(x) else None for x in rolling_std.tolist()],
         "stability": round(float(ics.mean() / ics.std(ddof=1) * np.sqrt(252)), 4) if ics.std(ddof=1) > 0 else None,
     }
+
+
+def monotonicity_index(db_path, factor_col: str = "mass_zscore", forward_days: int = 5, n_quantiles: int = 5) -> dict:
+    """因子单调性指数：分层收益是否随因子值单调。
+    完美单调(低到高递增或递减)=1, 随机=0。
+    """
+    panel = storage.load_factor_panel(db_path, factor_col=factor_col)
+    if panel.empty:
+        return {"error": "因子面板为空"}
+    close_panel = storage.load_close_panel(db_path, panel.index[0], panel.index[-1])
+    common = panel.index.intersection(close_panel.index).tolist()
+    if len(common) < 3:
+        return {"error": "公共日期不足"}
+    q = compute_quantile_returns(panel.loc[common], close_panel.loc[common], forward_days, n_quantiles)
+    if not q:
+        return {"error": "分层回测无结果"}
+    avg = [q["quantile_avg"].get(f"q{i}") for i in range(n_quantiles)]
+    # 单调性：计算相邻层序对数
+    import numpy as np
+    vals = [a for a in avg if a is not None]
+    if len(vals) < 2:
+        return {"error": "有效层数不足"}
+    # 趋势：用秩相关(序号 vs 值)
+    from scipy.stats import spearmanr
+    rank = list(range(len(vals)))
+    rho, _ = spearmanr(rank, vals)
+    return {
+        "factor": factor_col,
+        "forward_days": forward_days,
+        "quantile_avg": avg,
+        "long_short_avg": q["long_short_avg"],
+        "monotonicity": round(float(rho), 4) if not np.isnan(rho) else None,
+    }
