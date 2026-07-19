@@ -200,6 +200,9 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                 elif path == "/api/integrity":
                     from .quality import db_integrity
                     self._send_json(db_integrity(config.db_path))
+                elif path == "/api/next-run":
+                    from .quality import next_run_time
+                    self._send_json(next_run_time(config))
                 elif path == "/api/health":
                     from .quality import check_data_freshness
                     fresh = check_data_freshness(config.db_path)

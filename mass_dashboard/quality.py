@@ -91,3 +91,26 @@ def db_integrity(db_path) -> dict:
     if result["tables"].get("daily_bars", {}).get("rows", 0) == 0:
         result["alerts"].append(("ERROR", "daily_bars 表为空"))
     return result
+
+
+def next_run_time(config) -> dict:
+    """预测下次调度执行时间。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(config.timezone)
+    now = datetime.now(tz)
+    hour, minute = [int(x) for x in config.run_time.split(":", 1)]
+    # 今天的调度时间
+    today_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if now < today_run:
+        next_dt = today_run
+    else:
+        # 明天
+        from datetime import timedelta
+        next_dt = today_run + timedelta(days=1)
+    return {
+        "next_run": next_dt.strftime("%Y-%m-%d %H:%M %Z"),
+        "run_time": config.run_time,
+        "timezone": config.timezone,
+        "hours_until": round((next_dt - now).total_seconds() / 3600, 1),
+    }

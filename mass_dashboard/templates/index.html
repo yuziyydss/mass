@@ -1144,7 +1144,7 @@
 
     async function loadHealth() {
       try {
-        const d = await getJson("/api/health");
+        const [d, nr] = await Promise.all([getJson("/api/health"), getJson("/api/next-run")]);
         const el = $("healthStatus");
         const det = $("healthDetail");
         if (d.healthy) {
@@ -1153,6 +1153,9 @@
         } else {
           el.innerHTML = `<span style="color:var(--bad)">● ${d.alert.level}</span> ${d.alert.message}`;
           det.textContent = `最新: ${d.latest_date || "-"}`;
+        }
+        if (nr.next_run) {
+          det.textContent += ` | 下次调度: ${nr.next_run} (${nr.hours_until}h后)`;
         }
       } catch (e) { $("healthStatus").textContent = "检查失败"; }
     }
