@@ -969,3 +969,52 @@ def portfolio_concentration_check(db_path, components: list[dict], top_n: int = 
         "exposure": exposure,
         "n_alerts": len(alerts),
     }
+
+
+def long_short_sharpe(db_path, factor_col: str = "mass_zscore", forward_days: int = 5, n_quantiles: int = 5) -> dict:
+    """多空组合(最高层-最低层)的夏普比率。"""
+    import numpy as np
+    panel = storage.load_factor_panel(db_path, factor_col=factor_col)
+    if panel.empty:
+        return {"error": "因子面板为空"}
+    close_panel = storage.load_close_panel(db_path, panel.index[0], panel.index[-1])
+    common = panel.index.intersection(close_panel.index).tolist()
+    if len(common) < 3:
+        return {"error": "公共日期不足"}
+    q = compute_quantile_returns(panel.loc[common], close_panel.loc[common], forward_days, n_quantiles)
+    if not q:
+        return {"error": "分层回测无结果"}
+    # 多空收益序列 = q4收益 - q0收益 (已累计,这里用daily的)
+    # 但quantile_returns返回的是cum,需要daily。重新算daily多空
+    import pandas as pd
+    fwd = close_panel.shift(-forward_days) / close_panel - 1
+    ls_returns = []
+    for date in common:
+        f_row = panel.loc[date].dropna()
+        r_row = fwd.loc[date].dropna() if date in fwd.index else pd.Series(dtype=float)
+        codes = f_row.index.intersection(r_row.index)
+        if len(codes) < n_quantiles * 2:
+            continue
+        df_q = pd.DataFrame({"f": f_row.loc[codes].astype(float), "r": r_row.loc[codes].astype(float)}).sort_values("f")
+        try:
+            df_q["q"] = pd.qcut(df_q["f"], n_quantiles, labels=False, duplicates="drop")
+        except Exception:
+            continue
+        grp = df_q.groupby("q")["r"].mean()
+        if 0 in grp.index and n_quantiles - 1 in grp.index:
+            ls_returns.append(float(grp[n_quantiles - 1] - grp[0]))
+    if len(ls_returns) < 2:
+        return {"error": "多空收益样本不足"}
+    arr = np.array(ls_returns)
+    mean = float(arr.mean())
+    std = float(arr.std(ddof=1))
+    sharpe = float(mean / std * np.sqrt(252 / forward_days)) if std > 0 else None
+    return {
+        "factor": factor_col,
+        "forward_days": forward_days,
+        "n_periods": len(ls_returns),
+        "ls_return_avg": round(mean, 6),
+        "ls_return_std": round(std, 6),
+        "sharpe": round(sharpe, 4) if sharpe is not None else None,
+        "win_rate": round(float((arr > 0).mean()), 4),
+    }
