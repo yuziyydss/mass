@@ -88,3 +88,28 @@ def get_volatility_factor_values(db_path: Path, trade_date: str, period: int = 2
     if panel.empty or trade_date not in panel.index:
         return pd.Series(dtype=float)
     return panel.loc[trade_date].dropna()
+
+
+def compute_turnover_panel(db_path: Path, period: int = 20) -> pd.DataFrame:
+    """换手率代理因子：过去N日平均成交量。
+    高换手率通常有反转效应（流动性溢价反转）。
+    用 vol 作为代理（真正的换手率需流通股本，此处近似）。
+    """
+    with storage._read_conn(db_path) as conn:
+        row = conn.execute("SELECT MAX(trade_date) AS d FROM daily_bars").fetchone()
+        if not row or not row["d"]:
+            return pd.DataFrame()
+        end_date = row["d"]
+        from datetime import datetime, timedelta
+        start = (datetime.strptime(end_date, "%Y%m%d") - timedelta(days=period * 3)).strftime("%Y%m%d")
+        df = pd.read_sql_query(
+            "SELECT trade_date, code, vol FROM daily_bars WHERE trade_date BETWEEN ? AND ? AND vol IS NOT NULL ORDER BY trade_date, code",
+            conn, params=[start, end_date],
+        )
+    if df.empty:
+        return pd.DataFrame()
+    df["vol"] = pd.to_numeric(df["vol"], errors="coerce")
+    df = df.dropna(subset=["vol"])
+    panel = df.pivot(index="trade_date", columns="code", values="vol").sort_index()
+    # 滚动平均
+    return panel.rolling(period).mean()

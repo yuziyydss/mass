@@ -55,6 +55,10 @@ def _analyze_factor(config: AppConfig, qs: dict) -> dict:
         parts = factor.split("_")
         period = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
         factor_panel = momentum.compute_volatility_panel(config.db_path, period)
+    elif factor.startswith("turnover"):
+        parts = factor.split("_")
+        period = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
+        factor_panel = momentum.compute_turnover_panel(config.db_path, period)
     else:
         return factor_analysis.analyze_factor(config.db_path, factor_col=factor)
     if factor_panel.empty:
