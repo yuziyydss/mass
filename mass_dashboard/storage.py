@@ -1637,3 +1637,18 @@ def table_sizes(db_path: Path) -> list[dict]:
                 size = 0
             result.append({"table": t, "rows": n, "bytes": int(size)})
     return sorted(result, key=lambda x: -x["bytes"])
+
+
+def find_missing_trade_dates(db_path: Path, expected: list[str], min_rows: int = 1000) -> list[str]:
+    """找出缺失的交易日（factor_mass_daily行数<min_rows）。"""
+    counts = daily_bar_counts(db_path, expected)
+    # factor_mass_daily 的计数
+    with _read_conn(db_path) as conn:
+        dates = [str(d) for d in expected if d]
+        placeholders = ",".join(["?"]*len(dates)) if dates else ""
+        rows = conn.execute(
+            f"SELECT trade_date, COUNT(*) AS n FROM factor_mass_daily WHERE trade_date IN ({placeholders}) GROUP BY trade_date",
+            dates,
+        ).fetchall() if dates else []
+    f_counts = {r["trade_date"]: int(r["n"]) for r in rows}
+    return [d for d in expected if f_counts.get(str(d), 0) < min_rows]

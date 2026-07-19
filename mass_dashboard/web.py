@@ -214,6 +214,22 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
 </body></html>""")
                 elif path == "/api/summary":
                     self._send_json(storage.get_summary(config.db_path, qs.get("date", [None])[0]))
+                elif path == "/api/missing-dates":
+                    from .bars import trade_dates_for_window
+                    import mass_t
+                    pro = _pro
+                    if not pro:
+                        self._send_json({"error": "需要 tushare token"})
+                        return
+                    end = qs.get("end", [None])[0]
+                    if not end:
+                        end = storage.latest_trade_date(config.db_path)
+                    if not end:
+                        self._send_json({"error": "无最新交易日"})
+                        return
+                    dates = trade_dates_for_window(pro, end, 30)
+                    missing = storage.find_missing_trade_dates(config.db_path, dates, 1000)
+                    self._send_json({"expected": dates, "missing": missing, "n_missing": len(missing)})
                 elif path == "/api/cache-stats":
                     s = storage._cache_stats
                     total = s["hits"] + s["misses"]
