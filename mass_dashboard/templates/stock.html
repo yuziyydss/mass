@@ -193,6 +193,16 @@
     </section>
 
     <section class="panel">
+      <h2>技术指标: RSI + MACD</h2>
+      <div class="chart-box">
+        <div class="subtle" style="margin-bottom:4px">RSI(14)</div>
+        <canvas id="rsiChart" width="1180" height="140"></canvas>
+        <div class="subtle" style="margin:8px 0 4px">MACD(12,26,9)</div>
+        <canvas id="macdChart" width="1180" height="160"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
       <h2>MASS 历史折线图</h2>
       <div class="chart-box">
         <canvas id="chart" width="1180" height="360"></canvas>
@@ -282,6 +292,13 @@
       const rows = data.rows || [];
       if (rows.length < 5) return;
       drawKline(rows);
+      // RSI + MACD
+      const closes = rows.map(r => Number(r.close));
+      const rsi = calcRSI(closes, 14);
+      drawIndicator("rsiChart", [rsi], ["#7b3fa0"], null, 0, 100,
+        [{v: 30, color: "#067647"}, {v: 70, color: "#b42318"}]);
+      const macd = calcMACD(closes);
+      drawIndicator("macdChart", [macd.dif, macd.dea], ["#0d7c66", "#c45a2d"], macd.hist, null, null, null);
     }
 
     function drawKline(rows) {
@@ -384,6 +401,119 @@
       ctx.fillStyle = "#6b746f";
       ctx.fillText(rows[0].trade_date, padL, h - 8);
       ctx.fillText(rows[n - 1].trade_date, w - padR - 50, h - 8);
+    }
+
+    // RSI(14) 和 MACD(12,26,9) 计算 + 绘制
+    function calcRSI(closes, period = 14) {
+      const rsi = new Array(closes.length).fill(null);
+      if (closes.length < period + 1) return rsi;
+      let avgGain = 0, avgLoss = 0;
+      for (let i = 1; i <= period; i++) {
+        const ch = closes[i] - closes[i - 1];
+        if (ch >= 0) avgGain += ch; else avgLoss += -ch;
+      }
+      avgGain /= period; avgLoss /= period;
+      rsi[period] = 100 - 100 / (1 + (avgLoss === 0 ? 100 : avgGain / avgLoss));
+      for (let i = period + 1; i < closes.length; i++) {
+        const ch = closes[i] - closes[i - 1];
+        const g = ch > 0 ? ch : 0, l = ch < 0 ? -ch : 0;
+        avgGain = (avgGain * (period - 1) + g) / period;
+        avgLoss = (avgLoss * (period - 1) + l) / period;
+        rsi[i] = 100 - 100 / (1 + (avgLoss === 0 ? 100 : avgGain / avgLoss));
+      }
+      return rsi;
+    }
+
+    function calcMACD(closes, fast = 12, slow = 26, signal = 9) {
+      const ema = (arr, n) => {
+        const k = 2 / (n + 1), out = new Array(arr.length).fill(null);
+        let prev = null;
+        for (let i = 0; i < arr.length; i++) {
+          if (arr[i] == null) continue;
+          if (prev === null) { prev = arr[i]; out[i] = prev; continue; }
+          prev = arr[i] * k + prev * (1 - k); out[i] = prev;
+        }
+        return out;
+      };
+      const emaF = ema(closes, fast), emaS = ema(closes, slow);
+      const dif = closes.map((_, i) => (emaF[i] != null && emaS[i] != null) ? emaF[i] - emaS[i] : null);
+      const validDif = dif.filter(v => v != null);
+      const deaRaw = ema(validDif, signal);
+      // 对齐回原索引
+      const dea = new Array(closes.length).fill(null);
+      let j = 0;
+      for (let i = 0; i < closes.length; i++) {
+        if (dif[i] != null) { dea[i] = deaRaw[j]; j++; }
+      }
+      const hist = closes.map((_, i) => (dif[i] != null && dea[i] != null) ? (dif[i] - dea[i]) * 2 : null);
+      return { dif, dea, hist };
+    }
+
+    function drawIndicator(canvasId, lines, lineColors, hist, minY, maxY, refLines) {
+      const canvas = $(canvasId);
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      const padL = 40, padR = 14, padT = 10, padB = 22;
+      const n = lines[0].length;
+      if (n < 2) return;
+      const allVals = [];
+      lines.forEach(l => l.forEach(v => { if (v != null) allVals.push(v); }));
+      if (hist) hist.forEach(v => { if (v != null) allVals.push(v); });
+      if (!allVals.length) return;
+      const lo = minY != null ? minY : Math.min(...allVals);
+      const hi = maxY != null ? maxY : Math.max(...allVals);
+      const span = Math.max(0.001, hi - lo);
+      const xAt = i => padL + i * (w - padL - padR) / (n - 1);
+      const yAt = v => padT + (1 - (v - lo) / span) * (h - padT - padB);
+      // 网格
+      ctx.strokeStyle = "#eef1ee"; ctx.lineWidth = 1;
+      for (let i = 0; i <= 3; i++) {
+        const y = padT + i * (h - padT - padB) / 3;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      }
+      // 参考线（RSI的30/70）
+      if (refLines) refLines.forEach(r => {
+        const y = yAt(r.v);
+        ctx.strokeStyle = r.color; ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = r.color; ctx.font = "9px Segoe UI"; ctx.fillText(String(r.v), 4, y + 3);
+      });
+      // 0线
+      if (lo < 0 && hi > 0) {
+        const y0 = yAt(0);
+        ctx.strokeStyle = "#999"; ctx.beginPath(); ctx.moveTo(padL, y0); ctx.lineTo(w - padR, y0); ctx.stroke();
+      }
+      // 直方图（MACD hist）
+      if (hist) {
+        const y0 = lo < 0 && hi > 0 ? yAt(0) : padT;
+        hist.forEach((v, i) => {
+          if (v == null) return;
+          const x = xAt(i) - 1.5;
+          const yv = yAt(v);
+          ctx.fillStyle = v >= 0 ? "#f0a9a4" : "#b0d8c6";
+          ctx.fillRect(x, Math.min(y0, yv), 3, Math.abs(y0 - yv));
+        });
+      }
+      // 线
+      lines.forEach((line, idx) => {
+        ctx.strokeStyle = lineColors[idx % lineColors.length];
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        let started = false;
+        line.forEach((v, i) => {
+          if (v == null) return;
+          const x = xAt(i), y = yAt(v);
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+      // Y轴标签
+      ctx.fillStyle = "#6b746f"; ctx.font = "10px Segoe UI";
+      ctx.fillText(hi.toFixed(1), 4, padT + 8);
+      ctx.fillText(lo.toFixed(1), 4, h - padB);
     }
 
     async function init() {
