@@ -811,3 +811,36 @@ def monotonicity_index(db_path, factor_col: str = "mass_zscore", forward_days: i
         "long_short_avg": q["long_short_avg"],
         "monotonicity": round(float(rho), 4) if not np.isnan(rho) else None,
     }
+
+
+def ic_boxplot(db_path, factor_col: str = "mass_zscore", forward_days_list: list = None) -> dict:
+    """各前瞻周期IC分布的箱线统计(min/q1/median/q3/max)。"""
+    if forward_days_list is None:
+        forward_days_list = [1, 5, 10, 20]
+    panel = storage.load_factor_panel(db_path, factor_col=factor_col)
+    if panel.empty:
+        return {"error": "因子面板为空"}
+    close_panel = storage.load_close_panel(db_path, panel.index[0], panel.index[-1])
+    common = panel.index.intersection(close_panel.index).tolist()
+    if len(common) < 3:
+        return {"error": "公共日期不足"}
+    import numpy as np
+    fwd = compute_forward_returns(close_panel.loc[common], forward_days_list)
+    ic = compute_ic_series(panel.loc[common], fwd)
+    boxes = []
+    for N in forward_days_list:
+        if N not in ic or ic[N].empty:
+            boxes.append({"period": N})
+            continue
+        vals = ic[N]["ic"].values
+        boxes.append({
+            "period": N,
+            "min": round(float(np.min(vals)), 4),
+            "q1": round(float(np.percentile(vals, 25)), 4),
+            "median": round(float(np.median(vals)), 4),
+            "q3": round(float(np.percentile(vals, 75)), 4),
+            "max": round(float(np.max(vals)), 4),
+            "mean": round(float(np.mean(vals)), 4),
+            "n": int(len(vals)),
+        })
+    return {"factor": factor_col, "boxes": boxes}
