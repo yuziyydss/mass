@@ -343,7 +343,7 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     specs = [
                         {"name": "mass_zscore"}, {"name": "mass_neu"}, {"name": "mass_raw"},
                         {"name": "momentum_5"}, {"name": "momentum_20"}, {"name": "momentum_60"},
-                        {"name": "volatility_20"},
+                        {"name": "volatility_20"}, {"name": "turnover_20"}, {"name": "moneyflow_5"},
                     ]
                     self._send_json({"rows": factor_analysis.compare_factors(config.db_path, specs)})
                 elif path == "/api/factor-distribution":

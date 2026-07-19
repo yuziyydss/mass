@@ -113,3 +113,27 @@ def compute_turnover_panel(db_path: Path, period: int = 20) -> pd.DataFrame:
     panel = df.pivot(index="trade_date", columns="code", values="vol").sort_index()
     # 滚动平均
     return panel.rolling(period).mean()
+
+
+def compute_moneyflow_factor_panel(db_path: Path, period: int = 5) -> pd.DataFrame:
+    """资金流因子：过去N日主力净流入(net_mf_amount)之和。
+    正值=主力净流入,负值=净流出。
+    """
+    with storage._read_conn(db_path) as conn:
+        row = conn.execute("SELECT MAX(trade_date) AS d FROM daily_moneyflow").fetchone()
+        if not row or not row["d"]:
+            return pd.DataFrame()
+        end_date = row["d"]
+        from datetime import datetime, timedelta
+        start = (datetime.strptime(end_date, "%Y%m%d") - timedelta(days=period * 3)).strftime("%Y%m%d")
+        df = pd.read_sql_query(
+            "SELECT trade_date, code, net_mf_amount FROM daily_moneyflow WHERE trade_date BETWEEN ? AND ? AND net_mf_amount IS NOT NULL ORDER BY trade_date, code",
+            conn, params=[start, end_date],
+        )
+    if df.empty:
+        return pd.DataFrame()
+    df["net_mf_amount"] = pd.to_numeric(df["net_mf_amount"], errors="coerce")
+    df = df.dropna(subset=["net_mf_amount"])
+    panel = df.pivot(index="trade_date", columns="code", values="net_mf_amount").sort_index()
+    # 过去N日累计净流入
+    return panel.rolling(period).sum()

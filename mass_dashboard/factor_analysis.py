@@ -42,6 +42,8 @@ def _load_factor_panel_by_name(db_path, name: str):
         return momentum.compute_volatility_panel(db_path, period)
     if name.startswith("turnover"):
         return momentum.compute_turnover_panel(db_path, period)
+    if name.startswith("moneyflow"):
+        return momentum.compute_moneyflow_factor_panel(db_path, period)
     if name in ("mass_zscore", "mass_neu", "mass_raw"):
         return storage.load_factor_panel(db_path, name)
     return None
