@@ -54,3 +54,37 @@ def get_momentum_factor_values(db_path: Path, trade_date: str, period: int = 20)
     if panel.empty or trade_date not in panel.index:
         return pd.Series(dtype=float)
     return panel.loc[trade_date].dropna()
+
+
+def compute_volatility_panel(db_path: Path, period: int = 20) -> pd.DataFrame:
+    """波动率因子：过去N日日收益率的标准差（年化）。
+    高波动=风险大,通常负IC（高波动未来收益差）。
+    """
+    with storage._read_conn(db_path) as conn:
+        row = conn.execute("SELECT MAX(trade_date) AS d FROM daily_bars").fetchone()
+        if not row or not row["d"]:
+            return pd.DataFrame()
+        end_date = row["d"]
+        from datetime import datetime, timedelta
+        start = (datetime.strptime(end_date, "%Y%m%d") - timedelta(days=period * 4)).strftime("%Y%m%d")
+        df = pd.read_sql_query(
+            "SELECT trade_date, code, close FROM daily_bars WHERE trade_date BETWEEN ? AND ? AND close IS NOT NULL ORDER BY trade_date, code",
+            conn, params=[start, end_date],
+        )
+    if df.empty:
+        return pd.DataFrame()
+    df["close"] = pd.to_numeric(df["close"], errors="coerce")
+    df = df.dropna(subset=["close"])
+    panel = df.pivot(index="trade_date", columns="code", values="close").sort_index()
+    # 日收益率
+    rets = panel.pct_change()
+    # 滚动标准差 * sqrt(252) 年化
+    vol = rets.rolling(period).std() * np.sqrt(252)
+    return vol
+
+
+def get_volatility_factor_values(db_path: Path, trade_date: str, period: int = 20) -> pd.Series:
+    panel = compute_volatility_panel(db_path, period)
+    if panel.empty or trade_date not in panel.index:
+        return pd.Series(dtype=float)
+    return panel.loc[trade_date].dropna()

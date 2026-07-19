@@ -45,23 +45,27 @@ def json_safe(value):
 
 
 def _analyze_factor(config: AppConfig, qs: dict) -> dict:
-    """统一因子分析入口，支持 MASS 因子和动量因子。"""
+    """统一因子分析入口，支持 MASS / 动量 / 波动率 因子。"""
     factor = qs.get("factor", ["mass_zscore"])[0]
     if factor.startswith("momentum"):
-        # momentum_20 -> period=20
         parts = factor.split("_")
         period = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
         factor_panel = momentum.compute_momentum_panel(config.db_path, period)
-        if factor_panel.empty:
-            return {"error": f"动量因子(period={period})面板为空"}
-        dates = factor_panel.index.tolist()
-        close_panel = storage.load_close_panel(config.db_path, dates[0], dates[-1])
-        common = factor_panel.index.intersection(close_panel.index).tolist()
-        return factor_analysis.analyze_factor_from_panels(
-            factor_panel.loc[common], close_panel.loc[common],
-            forward_days_list=[5, 10, 20],
-        )
-    return factor_analysis.analyze_factor(config.db_path, factor_col=factor)
+    elif factor.startswith("volatility"):
+        parts = factor.split("_")
+        period = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
+        factor_panel = momentum.compute_volatility_panel(config.db_path, period)
+    else:
+        return factor_analysis.analyze_factor(config.db_path, factor_col=factor)
+    if factor_panel.empty:
+        return {"error": f"因子({factor})面板为空"}
+    dates = factor_panel.index.tolist()
+    close_panel = storage.load_close_panel(config.db_path, dates[0], dates[-1])
+    common = factor_panel.index.intersection(close_panel.index).tolist()
+    return factor_analysis.analyze_factor_from_panels(
+        factor_panel.loc[common], close_panel.loc[common],
+        forward_days_list=[5, 10, 20],
+    )
 
 
 def build_handler(config: AppConfig, scheduler: DashboardScheduler):
@@ -323,6 +327,7 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     specs = [
                         {"name": "mass_zscore"}, {"name": "mass_neu"}, {"name": "mass_raw"},
                         {"name": "momentum_5"}, {"name": "momentum_20"}, {"name": "momentum_60"},
+                        {"name": "volatility_20"},
                     ]
                     self._send_json({"rows": factor_analysis.compare_factors(config.db_path, specs)})
                 elif path == "/api/backtest":

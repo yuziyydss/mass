@@ -300,6 +300,10 @@ def compare_factors(db_path, factor_specs: list[dict]) -> list[dict]:
                 panel = momentum.compute_momentum_panel(db_path, period)
             elif name in ("mass_zscore", "mass_neu", "mass_raw"):
                 panel = storage.load_factor_panel(db_path, name)
+            elif name.startswith("volatility"):
+                parts = name.split("_")
+                period = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
+                panel = momentum.compute_volatility_panel(db_path, period)
             else:
                 continue
         if panel is None or panel.empty:
