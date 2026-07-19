@@ -405,3 +405,89 @@ def factor_distribution(db_path, factor_col: str = "mass_zscore", n_bins: int = 
         "bins": [round(float(b), 4) for b in bins],
         "counts": [int(c) for c in counts],
     }
+
+
+def neutralized_ic(db_path, factor_col: str = "mass_zscore", forward_days: int = 5) -> dict:
+    """行业+市值中性化后的IC vs 原始IC对比。
+    用残差(因子对行业dummy+log市值回归)再算IC,看因子去掉行业/市值暴露后还剩多少预测力。
+    """
+    import numpy as np
+    panel = storage.load_factor_panel(db_path, factor_col=factor_col)
+    if panel.empty:
+        return {"error": "因子面板为空"}
+    close_panel = storage.load_close_panel(db_path, panel.index[0], panel.index[-1])
+    common = panel.index.intersection(close_panel.index).tolist()
+    if len(common) < 3:
+        return {"error": "公共日期不足"}
+
+    # 取行业和市值（从factor_mass_daily）
+    with storage._read_conn(db_path) as conn:
+        meta = pd.read_sql_query(
+            "SELECT trade_date, code, industry, total_mkt_cap FROM factor_mass_daily WHERE mass_zscore IS NOT NULL",
+            conn,
+        )
+    meta["total_mkt_cap"] = pd.to_numeric(meta["total_mkt_cap"], errors="coerce")
+
+    # 前瞻收益
+    fwd = close_panel.shift(-forward_days) / close_panel - 1
+
+    orig_ics = []
+    neut_ics = []
+    for date in common:
+        if date not in fwd.index:
+            continue
+        f_row = panel.loc[date].dropna()
+        r_row = fwd.loc[date].dropna()
+        common_codes = f_row.index.intersection(r_row.index)
+        if len(common_codes) < 30:
+            continue
+        # 原始IC
+        from scipy.stats import spearmanr
+        try:
+            ic_orig, _ = spearmanr(f_row.loc[common_codes].astype(float), r_row.loc[common_codes].astype(float))
+        except Exception:
+            continue
+        if pd.isna(ic_orig):
+            continue
+        # 中性化残差
+        meta_row = meta[(meta["trade_date"] == date) & (meta["code"].isin(common_codes))].set_index("code")
+        meta_codes = meta_row.index.intersection(common_codes)
+        if len(meta_codes) < 30:
+            continue
+        f_sub = f_row.loc[meta_codes].astype(float)
+        r_sub = r_row.loc[meta_codes].astype(float)
+        caps = meta_row.loc[meta_codes, "total_mkt_cap"].astype(float)
+        inds = meta_row.loc[meta_codes, "industry"].fillna("未分类")
+        # X = industry dummies + log(cap)
+        ind_dum = pd.get_dummies(inds, dummy_na=True)
+        log_cap = np.log(caps.clip(lower=1))
+        X = pd.concat([ind_dum, log_cap], axis=1)
+        X.insert(0, "const", 1.0)
+        X_mat = X.values.astype(float)
+        # 对因子回归取残差
+        try:
+            coef_f, _, _, _ = np.linalg.lstsq(X_mat, f_sub.values, rcond=None)
+            resid_f = f_sub.values - X_mat @ coef_f
+            coef_r, _, _, _ = np.linalg.lstsq(X_mat, r_sub.values, rcond=None)
+            resid_r = r_sub.values - X_mat @ coef_r
+            ic_neut, _ = spearmanr(resid_f, resid_r)
+        except Exception:
+            continue
+        if not pd.isna(ic_neut):
+            orig_ics.append(float(ic_orig))
+            neut_ics.append(float(ic_neut))
+
+    if not orig_ics:
+        return {"error": "有效IC期数不足"}
+    orig_mean = float(np.mean(orig_ics))
+    neut_mean = float(np.mean(neut_ics))
+    return {
+        "factor": factor_col,
+        "forward_days": forward_days,
+        "n_periods": len(orig_ics),
+        "orig_ic": round(orig_mean, 4),
+        "neutralized_ic": round(neut_mean, 4),
+        "ic_retained": round(neut_mean / orig_mean, 4) if abs(orig_mean) > 1e-9 else None,
+        "orig_ics": [round(x, 4) for x in orig_ics],
+        "neut_ics": [round(x, 4) for x in neut_ics],
+    }
