@@ -373,3 +373,35 @@ def synthesize_factor(db_path, components: list, weights: list[float] = None) ->
         z = sub.sub(mu, axis=0).div(sd.replace(0, np.nan), axis=0)
         result = result.add(w * z, fill_value=0)
     return result
+
+
+def factor_distribution(db_path, factor_col: str = "mass_zscore", n_bins: int = 30) -> dict:
+    """最新截面因子值的分布直方图 + 统计。"""
+    panel = storage.load_factor_panel(db_path, factor_col=factor_col)
+    if panel.empty:
+        return {"error": "因子面板为空"}
+    latest = panel.index[-1]
+    values = panel.loc[latest].dropna()
+    if len(values) < 10:
+        return {"error": "样本不足"}
+    # 统计
+    import numpy as np
+    mu = float(values.mean())
+    sigma = float(values.std(ddof=1))
+    # 直方图
+    lo, hi = values.min(), values.max()
+    bins = np.linspace(lo, hi, n_bins + 1)
+    counts, _ = np.histogram(values, bins=bins)
+    return {
+        "factor": factor_col,
+        "trade_date": latest,
+        "n": int(len(values)),
+        "mean": round(mu, 4),
+        "std": round(sigma, 4),
+        "min": round(float(lo), 4),
+        "max": round(float(hi), 4),
+        "skew": round(float(values.skew()), 4),
+        "kurt": round(float(values.kurt()), 4),
+        "bins": [round(float(b), 4) for b in bins],
+        "counts": [int(c) for c in counts],
+    }

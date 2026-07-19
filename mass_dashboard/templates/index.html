@@ -501,6 +501,9 @@
             </div>
             <div class="subtle" style="margin-bottom:6px">分层累计净值</div>
             <canvas id="quantileChart" width="1140" height="200"></canvas>
+            <div class="subtle" style="margin:14px 0 6px">因子值分布（最新截面）</div>
+            <canvas id="distChart" width="1140" height="180"></canvas>
+            <div id="distStats" class="subtle" style="margin-top:6px"></div>
           </div>
         </section>
 
@@ -882,9 +885,46 @@
             ["#b42318","#d97706","#6b746f","#0d7c66","#067647","#c45a2d"],
             ["q1","q2","q3","q4","q5","多空"]);
         }
+        // 因子值分布
+        loadDistribution(factor);
       } catch (e) {
         $("factorStatus").textContent = "错误: " + e.message;
       }
+    }
+
+    async function loadDistribution(factor) {
+      try {
+        const d = await getJson(`/api/factor-distribution?factor=${factor}`);
+        if (d.error) { $("distStats").textContent = d.error; return; }
+        $("distStats").innerHTML = `mean=${d.mean} std=${d.std} skew=${d.skew} kurt=${d.kurt} n=${d.n} (${d.trade_date})`;
+        // 直方图
+        const canvas = $("distChart");
+        const ctx = canvas.getContext("2d");
+        const w = canvas.width, h = canvas.height;
+        ctx.clearRect(0,0,w,h); ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);
+        const counts = d.counts;
+        const maxC = Math.max(...counts);
+        if (maxC === 0) return;
+        const padL=40,padR=14,padT=12,padB=24;
+        const n = counts.length;
+        const cw = (w-padL-padR)/n;
+        const yAt = v => padT + (1-v/maxC)*(h-padT-padB);
+        // 网格
+        ctx.strokeStyle="#eef1ee"; ctx.lineWidth=1;
+        for(let i=0;i<=3;i++){const y=padT+i*(h-padT-padB)/3;ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(w-padR,y);ctx.stroke();}
+        // 柱
+        ctx.fillStyle="#0d7c66";
+        counts.forEach((c,i)=>{
+          const x=padL+i*cw+cw*0.1, bw=cw*0.8;
+          const yv=yAt(c);
+          ctx.fillRect(x, yv, bw, h-padB-yv);
+        });
+        // X轴
+        ctx.fillStyle="#6b746f"; ctx.font="10px Segoe UI";
+        ctx.fillText(d.bins[0].toFixed(2), padL, h-8);
+        ctx.fillText(d.bins[d.bins.length-1].toFixed(2), w-padR-30, h-8);
+        ctx.fillText("max="+maxC, 4, padT+8);
+      } catch(e) { $("distStats").textContent = "分布加载失败"; }
     }
 
     async function runBacktest() {
