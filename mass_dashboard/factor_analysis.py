@@ -1018,3 +1018,38 @@ def long_short_sharpe(db_path, factor_col: str = "mass_zscore", forward_days: in
         "sharpe": round(sharpe, 4) if sharpe is not None else None,
         "win_rate": round(float((arr > 0).mean()), 4),
     }
+
+
+def factor_effectiveness_score(db_path, factor_col: str = "mass_zscore", forward_days: int = 5) -> dict:
+    """因子有效性综合评分(0-100)。
+    综合: |IC均值|(40分) + |IR|(30分) + 单调性(20分) + 显著性(10分)
+    """
+    import numpy as np
+    # IC/IR
+    ic_ci = ic_confidence_interval(db_path, factor_col, forward_days)
+    if "error" in ic_ci:
+        return ic_ci
+    # 单调性
+    mono = monotonicity_index(db_path, factor_col, forward_days, 5)
+    ic_mean = abs(ic_ci.get("ic_mean") or 0)
+    ir = abs(ic_ci.get("t_stat") or 0) / 10  # t转近似IR
+    mono_val = abs(mono.get("monotonicity") or 0) if "error" not in mono else 0
+    significant = 1.0 if ic_ci.get("significant") else 0.0
+    # 评分
+    score_ic = min(ic_mean / 0.05 * 40, 40)
+    score_ir = min(ir / 3 * 30, 30)
+    score_mono = min(mono_val * 20, 20)
+    score_sig = significant * 10
+    total = round(score_ic + score_ir + score_mono + score_sig, 1)
+    return {
+        "factor": factor_col,
+        "forward_days": forward_days,
+        "score": total,
+        "score_ic": round(score_ic, 1),
+        "score_ir": round(score_ir, 1),
+        "score_mono": round(score_mono, 1),
+        "score_sig": round(score_sig, 1),
+        "ic_mean": ic_ci.get("ic_mean"),
+        "significant": ic_ci.get("significant"),
+        "monotonicity": mono.get("monotonicity") if "error" not in mono else None,
+    }
