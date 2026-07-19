@@ -305,6 +305,16 @@
     }
     .empty-state .icon { font-size: 28px; display: block; margin-bottom: 8px; opacity: .5; }
 
+    /* 错误提示 toast */
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; z-index: 100;
+      background: var(--bad); color: #fff; padding: 10px 16px;
+      border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.2);
+      font-size: 13px; max-width: 380px;
+      animation: slidein .25s;
+    }
+    @keyframes slidein { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+
     .skeleton {
       background: linear-gradient(90deg, #eef1ee 25%, #f5f7f4 50%, #eef1ee 75%);
       background-size: 200% 100%;
@@ -679,6 +689,15 @@
       return data;
     }
     const _cache = {};
+    function toast(msg, kind = "error") {
+      const t = document.createElement("div");
+      t.className = "toast";
+      if (kind !== "error") t.style.background = "var(--good)";
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3500);
+    }
+    window.addEventListener("error", (e) => toast(e.message));
 
     function selectedDate() {
       return $("dateSelect").value || "";
