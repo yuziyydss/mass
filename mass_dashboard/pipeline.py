@@ -15,6 +15,7 @@ from .quality import check_mass_quality
 from . import bars as bar_cache
 from . import storage
 from . import moneyflow
+from . import bottom
 
 LOGGER = logging.getLogger("mass_dashboard.pipeline")
 JOB_NAME = "mass_tushare_daily"
@@ -205,6 +206,22 @@ def run_mass_pipeline(config: AppConfig, trade_date: Optional[str] = None, force
             LOGGER.info("Week-down-flow: %s stocks for %s", flow_count, resolved_date)
         except Exception as mf_err:
             LOGGER.warning("Moneyflow 阶段失败（不影响 MASS 结果）: %s", mf_err)
+
+        # ── 底部条件阶段（独立于 MASS + moneyflow）──
+        try:
+            storage.update_job_progress(
+                config.db_path, run_id, JOB_NAME, resolved_date,
+                "BOTTOM_CALC", total=len(base),
+                message="Calculating bottom conditions (地量/不创新低/估值低/底背离)",
+            )
+            bottom_rows = bottom.calculate_bottom_conditions(
+                db_path=config.db_path, base=base,
+                trade_date=resolved_date, cfg=cfg,
+            )
+            bottom_count = storage.upsert_bottom_conditions(config.db_path, pd.DataFrame(bottom_rows), resolved_date) if bottom_rows else 0
+            LOGGER.info("Bottom conditions: %s stocks for %s", bottom_count, resolved_date)
+        except Exception as bt_err:
+            LOGGER.warning("底部条件阶段失败（不影响 MASS 结果）: %s", bt_err)
 
         return {"status": "SUCCESS", "trade_date": resolved_date, "row_count": row_count, "alerts": alerts}
     except Exception as err:

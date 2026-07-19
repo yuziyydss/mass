@@ -19,6 +19,8 @@ MASS_COLUMNS = [
     "industry",
     "total_mkt_cap",
     "pe",
+    "pb",
+    "dv_ratio",
     "mass_raw",
     "mass_clip",
     "mass_neu",
@@ -88,6 +90,22 @@ WEEK_DOWN_FLOW_COLUMNS = [
     "total_mkt_cap",
 ]
 
+BOTTOM_CONDITIONS_COLUMNS = [
+    "trade_date",
+    "code",
+    "name",
+    "industry",
+    "conditions_met",
+    "cond1_volume",
+    "cond2_price",
+    "cond3_valuation",
+    "cond4_divergence",
+    "pe_ttm",
+    "pb",
+    "dv_ratio",
+    "latest_close",
+]
+
 
 # 线程本地只读连接：web 每个 HTTP 请求线程复用同一连接，避免反复 open/close。
 # 写路径仍走 connect()（每次独立短连接，配合 WAL 避免长事务持锁）。
@@ -148,6 +166,8 @@ def init_db(db_path: Path) -> None:
                 industry TEXT,
                 total_mkt_cap REAL,
                 pe REAL,
+                pb REAL,
+                dv_ratio REAL,
                 mass_raw REAL,
                 mass_clip REAL,
                 mass_neu REAL,
@@ -252,6 +272,30 @@ def init_db(db_path: Path) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_week_down_flow_date
             ON week_down_flow (trade_date);
+
+            CREATE TABLE IF NOT EXISTS bottom_conditions (
+                trade_date TEXT NOT NULL,
+                code TEXT NOT NULL,
+                name TEXT,
+                industry TEXT,
+                conditions_met INTEGER DEFAULT 0,
+                cond1_volume INTEGER DEFAULT 0,
+                cond2_price INTEGER DEFAULT 0,
+                cond3_valuation INTEGER DEFAULT 0,
+                cond4_divergence INTEGER DEFAULT 0,
+                pe_ttm REAL,
+                pb REAL,
+                dv_ratio REAL,
+                latest_close REAL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (trade_date, code)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_bottom_conditions_date
+            ON bottom_conditions (trade_date);
+
+            CREATE INDEX IF NOT EXISTS idx_bottom_conditions_met
+            ON bottom_conditions (trade_date, conditions_met DESC);
             """
         )
 
@@ -1079,5 +1123,63 @@ def query_week_down_flow(db_path: Path, trade_date: Optional[str] = None, limit:
             LIMIT ?
             """,
             (trade_date, limit),
+        ).fetchall()
+    return {"trade_date": trade_date, "rows": [dict(row) for row in rows]}
+
+
+# ── bottom_conditions 底部条件 ──
+
+
+def upsert_bottom_conditions(db_path: Path, df: pd.DataFrame, trade_date: str) -> int:
+    if df.empty:
+        return 0
+
+    work = df.copy()
+    work["trade_date"] = trade_date
+    for col in BOTTOM_CONDITIONS_COLUMNS:
+        if col not in work.columns:
+            work[col] = None
+
+    updated_at = utc_now()
+    rows = [
+        tuple(clean_value(item[col]) for col in BOTTOM_CONDITIONS_COLUMNS) + (updated_at,)
+        for item in work[BOTTOM_CONDITIONS_COLUMNS].to_dict("records")
+    ]
+
+    placeholders = ",".join(["?"] * (len(BOTTOM_CONDITIONS_COLUMNS) + 1))
+    update_cols = [col for col in BOTTOM_CONDITIONS_COLUMNS if col not in {"trade_date", "code"}]
+    update_sql = ", ".join([f"{col}=excluded.{col}" for col in update_cols] + ["updated_at=excluded.updated_at"])
+
+    with connect(db_path) as conn:
+        conn.executemany(
+            f"""
+            INSERT INTO bottom_conditions ({",".join(BOTTOM_CONDITIONS_COLUMNS)}, updated_at)
+            VALUES ({placeholders})
+            ON CONFLICT(trade_date, code) DO UPDATE SET {update_sql}
+            """,
+            rows,
+        )
+    return len(rows)
+
+
+def query_bottom_conditions(db_path: Path, trade_date: Optional[str] = None, min_conditions: int = 2, limit: int = 100) -> dict:
+    if trade_date is None:
+        with _read_conn(db_path) as conn:
+            row = conn.execute("SELECT MAX(trade_date) AS trade_date FROM bottom_conditions").fetchone()
+            trade_date = row["trade_date"] if row else None
+    if not trade_date:
+        return {"trade_date": None, "rows": []}
+
+    limit = max(1, min(limit, 500))
+    with _read_conn(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM bottom_conditions
+            WHERE trade_date=? AND conditions_met >= ?
+            ORDER BY conditions_met DESC, latest_close ASC
+            LIMIT ?
+            """,
+            (trade_date, min_conditions, limit),
         ).fetchall()
     return {"trade_date": trade_date, "rows": [dict(row) for row in rows]}

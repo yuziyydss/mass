@@ -187,6 +187,15 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                             limit=int(qs.get("limit", ["100"])[0]),
                         )
                     )
+                elif path == "/api/bottom":
+                    self._send_json(
+                        storage.query_bottom_conditions(
+                            config.db_path,
+                            trade_date=qs.get("date", [None])[0],
+                            min_conditions=int(qs.get("min", ["2"])[0]),
+                            limit=int(qs.get("limit", ["100"])[0]),
+                        )
+                    )
                 else:
                     self._send_json({"error": "not found"}, status=404)
             except Exception as err:

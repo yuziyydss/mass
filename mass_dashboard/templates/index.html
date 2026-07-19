@@ -435,6 +435,32 @@
         </div>
       </div>
 
+      <div class="panel">
+        <div class="panel-head">
+          <h2>底部4条件筛选</h2>
+          <div class="subtle">地量 + 不创新低 + 估值低 + 底背离</div>
+        </div>
+        <div class="table-wrap" style="max-height:360px">
+          <table>
+            <thead>
+              <tr>
+                <th>代码</th>
+                <th>名称</th>
+                <th>行业</th>
+                <th class="num">条件数</th>
+                <th>地量</th>
+                <th>不创新低</th>
+                <th>估值低</th>
+                <th>底背离</th>
+                <th class="num">PB</th>
+                <th class="num">现价</th>
+              </tr>
+            </thead>
+            <tbody id="bottomBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div>
         <div class="panel">
           <div class="panel-head"><h2>运行进度</h2></div>
@@ -602,6 +628,30 @@
       });
     }
 
+    async function loadBottom() {
+      const data = await getJson(`/api/bottom?date=${selectedDate()}&min=2&limit=30`);
+      const check = v => v ? "✓" : "";
+      $("bottomBody").innerHTML = data.rows.map(row => `
+        <tr data-code="${row.code}">
+          <td>${row.code}</td>
+          <td>${row.name || ""}</td>
+          <td>${row.industry || ""}</td>
+          <td class="num">${row.conditions_met}/4</td>
+          <td>${check(row.cond1_volume)}</td>
+          <td>${check(row.cond2_price)}</td>
+          <td>${check(row.cond3_valuation)}</td>
+          <td>${check(row.cond4_divergence)}</td>
+          <td class="num">${fmt(row.pb, 2)}</td>
+          <td class="num">${fmt(row.latest_close, 2)}</td>
+        </tr>
+      `).join("");
+      document.querySelectorAll("#bottomBody tr").forEach(tr => {
+        tr.addEventListener("click", () => {
+          window.location.href = `/stock?code=${encodeURIComponent(tr.dataset.code)}`;
+        });
+      });
+    }
+
     async function loadIndustry() {
       const data = await getJson(`/api/industry?date=${selectedDate()}`);
       const rows = data.rows.slice(0, 18);
@@ -645,7 +695,7 @@
     async function refreshMain(resetPage = false) {
       if (resetPage) state.page = 1;
       await loadSummary();
-      await Promise.all([loadMassTable(), loadFocus(), loadWeekFlow(), loadIndustry(), loadJobs(), loadProgress()]);
+      await Promise.all([loadMassTable(), loadFocus(), loadWeekFlow(), loadBottom(), loadIndustry(), loadJobs(), loadProgress()]);
     }
 
     $("dateSelect").addEventListener("change", async () => {

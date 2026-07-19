@@ -146,7 +146,7 @@ def calculate_mass_from_cache(
     )
     mass_by_code = mass_series.to_dict() if isinstance(mass_series, pd.Series) else {}
 
-    base_meta = base[["code", "name", "industry", "total_mkt_cap", "pe"]].copy()
+    base_meta = base[["code", "name", "industry", "total_mkt_cap", "pe", "pb", "dv_ratio"]].copy()
     base_meta["code"] = base_meta["code"].astype(str)
     base_meta["mass_raw"] = base_meta["code"].map(mass_by_code)
 
@@ -160,6 +160,8 @@ def calculate_mass_from_cache(
                 "industry": getattr(row, "industry", None),
                 "total_mkt_cap": getattr(row, "total_mkt_cap", None),
                 "pe": getattr(row, "pe", None),
+                "pb": getattr(row, "pb", None),
+                "dv_ratio": getattr(row, "dv_ratio", None),
                 "mass_raw": row.mass_raw,
             }
         )

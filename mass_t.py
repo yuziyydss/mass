@@ -32,12 +32,14 @@ OUTPUT_COLUMNS = [
     "industry",
     "total_mkt_cap",
     "pe",
+    "pb",
+    "dv_ratio",
     "mass_raw",
     "mass_clip",
     "mass_neu",
     "mass_zscore",
 ]
-BASE_FILL_COLUMNS = ["name", "industry", "total_mkt_cap", "pe"]
+BASE_FILL_COLUMNS = ["name", "industry", "total_mkt_cap", "pe", "pb", "dv_ratio"]
 RESUME_REQUIRED_COLUMNS = ["code", "mass_raw"]
 TOKEN_ENV_KEYS = ("TUSHARE_TOKEN", "TS_TOKEN", "TUSHARE_PRO_TOKEN")
 
@@ -261,7 +263,7 @@ def load_market_cap(pro, trade_date: str, cfg: RuntimeConfig) -> pd.DataFrame:
                 data = pro.daily_basic(
                     ts_code="",
                     trade_date=current_date,
-                    fields="ts_code,total_mv,pe_ttm",
+                    fields="ts_code,total_mv,pe_ttm,pb,dv_ratio",
                 )
                 if data is not None and not data.empty:
                     data = data.rename(
@@ -269,8 +271,10 @@ def load_market_cap(pro, trade_date: str, cfg: RuntimeConfig) -> pd.DataFrame:
                     )
                     data["total_mkt_cap"] = pd.to_numeric(data["total_mkt_cap"], errors="coerce")
                     data["pe"] = pd.to_numeric(data["pe"], errors="coerce")
+                    data["pb"] = pd.to_numeric(data["pb"], errors="coerce")
+                    data["dv_ratio"] = pd.to_numeric(data["dv_ratio"], errors="coerce")
                     LOGGER.info("成功获取 %s 条市值数据 (trade_date=%s)", len(data), current_date)
-                    return data[["code", "total_mkt_cap", "pe"]]
+                    return data[["code", "total_mkt_cap", "pe", "pb", "dv_ratio"]]
 
                 LOGGER.warning("trade_date=%s 市值数据为空", current_date)
                 break
@@ -286,7 +290,7 @@ def load_market_cap(pro, trade_date: str, cfg: RuntimeConfig) -> pd.DataFrame:
                     time.sleep(cfg.market_cap_retry_sleep_seconds)
 
     LOGGER.error("市值数据获取失败，返回空表")
-    return pd.DataFrame(columns=["code", "total_mkt_cap", "pe"])
+    return pd.DataFrame(columns=["code", "total_mkt_cap", "pe", "pb", "dv_ratio"])
 
 
 def read_industry_cache(cache_file: Path, requested_codes: Optional[set[str]] = None) -> pd.DataFrame:
@@ -551,6 +555,8 @@ def run_mass_loop(
                     "industry": getattr(row, "industry", None),
                     "total_mkt_cap": getattr(row, "total_mkt_cap", None),
                     "pe": getattr(row, "pe", None),
+                    "pb": getattr(row, "pb", None),
+                    "dv_ratio": getattr(row, "dv_ratio", None),
                     "mass_raw": val,
                 }
             )
