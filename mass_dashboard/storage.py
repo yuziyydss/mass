@@ -1236,3 +1236,51 @@ def load_factor_panel(db_path: Path, factor_col: str = "mass_zscore") -> pd.Data
     panel = df.pivot(index="trade_date", columns="code", values="factor")
     panel.index = panel.index.astype(str)
     return panel.sort_index()
+
+
+def load_kline(
+    db_path: Path,
+    code: str,
+    limit: int = 250,
+) -> list[dict]:
+    """加载单只股票的K线数据（开高低收量），按时间正序，最多 limit 条。
+    用于个股详情页 K线 + 成交量 + MA 均线展示。
+    """
+    with _read_conn(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT trade_date, open, high, low, close, vol, amount
+            FROM daily_bars
+            WHERE code=?
+            ORDER BY trade_date DESC
+            LIMIT ?
+            """,
+            (code, limit),
+        ).fetchall()
+    if not rows:
+        return []
+    # 倒序取出来的，翻成正序，并算 MA5/MA20
+    items = [dict(r) for r in rows]
+    items.reverse()
+    closes = [float(r["close"]) if r["close"] is not None else None for r in items]
+    # MA5 / MA20
+    def ma(series, n):
+        out = [None] * len(series)
+        for i in range(n - 1, len(series)):
+            window = series[i - n + 1: i + 1]
+            valid = [x for x in window if x is not None]
+            out[i] = round(sum(valid) / len(valid), 4) if valid else None
+        return out
+    ma5 = ma(closes, 5)
+    ma20 = ma(closes, 20)
+    for i, r in enumerate(items):
+        r["ma5"] = ma5[i]
+        r["ma20"] = ma20[i]
+        # 数值序列化
+        for k in ("open", "high", "low", "close", "vol", "amount"):
+            if r[k] is not None:
+                try:
+                    r[k] = round(float(r[k]), 4)
+                except (TypeError, ValueError):
+                    pass
+    return items

@@ -165,6 +165,10 @@ def build_handler(config: AppConfig, scheduler: DashboardScheduler):
                 elif path == "/api/history":
                     code = qs.get("code", [""])[0]
                     self._send_json({"rows": storage.stock_history(config.db_path, code)})
+                elif path == "/api/kline":
+                    code = qs.get("code", [""])[0]
+                    limit = int(qs.get("limit", ["250"])[0])
+                    self._send_json({"rows": storage.load_kline(config.db_path, code, limit)})
                 elif path == "/api/jobs":
                     self._send_json({"rows": storage.recent_jobs(config.db_path)})
                 elif path == "/api/progress":

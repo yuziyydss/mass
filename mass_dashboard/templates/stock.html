@@ -186,6 +186,13 @@
     </section>
 
     <section class="panel">
+      <h2>K线 + 成交量 + MA</h2>
+      <div class="chart-box">
+        <canvas id="kline" width="1180" height="420"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
       <h2>MASS 历史折线图</h2>
       <div class="chart-box">
         <canvas id="chart" width="1180" height="360"></canvas>
@@ -270,7 +277,119 @@
       ctx.fillText(points[points.length - 1].x, w - 92, h - 12);
     }
 
+    async function loadKline() {
+      const data = await getJson(`/api/kline?code=${encodeURIComponent(code)}&limit=120`);
+      const rows = data.rows || [];
+      if (rows.length < 5) return;
+      drawKline(rows);
+    }
+
+    function drawKline(rows) {
+      const canvas = $("kline");
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+
+      const padL = 50, padR = 16, padT = 14;
+      const priceH = h * 0.7;      // 价格区占70%
+      const volTop = priceH + 16;
+      const volH = h - volTop - 24;
+
+      // 价格范围
+      let lows = [], highs = [], vols = [];
+      rows.forEach(r => {
+        if (r.low != null) lows.push(Number(r.low));
+        if (r.high != null) highs.push(Number(r.high));
+        if (r.vol != null) vols.push(Number(r.vol));
+      });
+      if (!lows.length) return;
+      const minP = Math.min(...lows), maxP = Math.max(...highs);
+      const span = Math.max(0.01, maxP - minP);
+      const maxVol = Math.max(1, ...vols);
+      const n = rows.length;
+      const cw = (w - padL - padR) / n;  // 每根蜡烛宽度
+      const xAt = i => padL + i * cw;
+      const yP = v => padT + (1 - (v - minP) / span) * (priceH - padT);
+
+      // 网格
+      ctx.strokeStyle = "#eef1ee"; ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + i * (priceH - padT) / 4;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      }
+      // Y轴价格标签
+      ctx.fillStyle = "#6b746f"; ctx.font = "10px Segoe UI";
+      ctx.fillText(maxP.toFixed(2), 4, padT + 8);
+      ctx.fillText(minP.toFixed(2), 4, priceH - 4);
+
+      // 成交量网格 + 标签
+      ctx.strokeStyle = "#eef1ee";
+      ctx.beginPath(); ctx.moveTo(padL, volTop + volH); ctx.lineTo(w - padR, volTop + volH); ctx.stroke();
+      ctx.fillText("成交量", 4, volTop + 10);
+
+      // 蜡烛 + 成交量
+      rows.forEach((r, i) => {
+        const x = xAt(i) + cw * 0.15;
+        const bodyW = cw * 0.7;
+        const o = Number(r.open), c = Number(r.close), hi = Number(r.high), lo = Number(r.low);
+        if ([o, c, hi, lo].some(v => !Number.isFinite(v))) return;
+        const up = c >= o;
+        const color = up ? "#b42318" : "#067647";  // A股红涨绿跌
+        ctx.strokeStyle = color; ctx.fillStyle = color;
+        // 影线
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + bodyW / 2, yP(hi));
+        ctx.lineTo(x + bodyW / 2, yP(lo));
+        ctx.stroke();
+        // 实体
+        const yO = yP(o), yC = yP(c);
+        const top = Math.min(yO, yC), bh = Math.max(1, Math.abs(yC - yO));
+        ctx.fillRect(x, top, bodyW, bh);
+      });
+
+      // MA5 / MA20
+      const drawMA = (key, color) => {
+        ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.beginPath();
+        let started = false;
+        rows.forEach((r, i) => {
+          const v = r[key];
+          if (v == null || !Number.isFinite(Number(v))) return;
+          const x = xAt(i) + cw / 2, y = yP(Number(v));
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      };
+      drawMA("ma5", "#d97706");
+      drawMA("ma20", "#0d7c66");
+
+      // 图例
+      ctx.font = "11px Segoe UI";
+      ctx.fillStyle = "#d97706"; ctx.fillText("MA5", padL + 4, padT + 12);
+      ctx.fillStyle = "#0d7c66"; ctx.fillText("MA20", padL + 40, padT + 12);
+
+      // 成交量柱
+      rows.forEach((r, i) => {
+        const v = Number(r.vol);
+        if (!Number.isFinite(v) || v <= 0) return;
+        const x = xAt(i) + cw * 0.2;
+        const bh = (v / maxVol) * volH;
+        const o = Number(r.open), c = Number(r.close);
+        ctx.fillStyle = (c >= o) ? "#f0a9a4" : "#b0d8c6";
+        ctx.fillRect(x, volTop + volH - bh, cw * 0.6, bh);
+      });
+
+      // X轴日期（首尾）
+      ctx.fillStyle = "#6b746f";
+      ctx.fillText(rows[0].trade_date, padL, h - 8);
+      ctx.fillText(rows[n - 1].trade_date, w - padR - 50, h - 8);
+    }
+
     async function init() {
+      // 先加载K线 + 成交量（不阻塞MASS数据）
+      loadKline().catch(err => console.warn("kline load failed", err));
+
       const data = await getJson(`/api/history?code=${encodeURIComponent(code)}`);
       const rows = data.rows || [];
       $("historyBody").innerHTML = rows.map(row => `
