@@ -31,6 +31,22 @@ DEFAULT_FORWARD_DAYS = [1, 5, 10, 20]  # 多个前瞻周期
 DEFAULT_N_QUANTILES = 5
 
 
+def _load_factor_panel_by_name(db_path, name: str):
+    """按因子名加载面板，统一处理 MASS/动量/波动率/换手率。返回 None 表示未知因子。"""
+    from . import momentum
+    parts = name.split("_")
+    period = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
+    if name.startswith("momentum"):
+        return momentum.compute_momentum_panel(db_path, period)
+    if name.startswith("volatility"):
+        return momentum.compute_volatility_panel(db_path, period)
+    if name.startswith("turnover"):
+        return momentum.compute_turnover_panel(db_path, period)
+    if name in ("mass_zscore", "mass_neu", "mass_raw"):
+        return storage.load_factor_panel(db_path, name)
+    return None
+
+
 def compute_forward_returns(close_panel: pd.DataFrame, periods: list[int]) -> dict[int, pd.DataFrame]:
     """计算未来N日收益面板。返回 {N: DataFrame}，结构与 close_panel 相同。
 
@@ -289,23 +305,13 @@ def compare_factors(db_path, factor_specs: list[dict]) -> list[dict]:
     if close_panel.empty:
         return []
 
-    for spec in factor_specs:
-        name = spec.get("name", "?")
-        panel = spec.get("panel")
-        if panel is None:
-            # 内置因子
-            if name.startswith("momentum"):
-                parts = name.split("_")
-                period = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
-                panel = momentum.compute_momentum_panel(db_path, period)
-            elif name in ("mass_zscore", "mass_neu", "mass_raw"):
-                panel = storage.load_factor_panel(db_path, name)
-            elif name.startswith("volatility"):
-                parts = name.split("_")
-                period = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
-                panel = momentum.compute_volatility_panel(db_path, period)
-            else:
-                continue
+    # 并行加载各因子面板（IO密集, SQLite WAL + 线程本地读连接支持并发读）
+    from concurrent.futures import ThreadPoolExecutor
+    names = [s.get("name", "?") for s in factor_specs]
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        panels = list(ex.map(lambda n: _load_factor_panel_by_name(db_path, n), names))
+
+    for name, panel in zip(names, panels):
         if panel is None or panel.empty:
             continue
         common = panel.index.intersection(close_panel.index).tolist()
