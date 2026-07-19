@@ -259,6 +259,9 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     code = qs.get("code", [""])[0]
                     limit = int(qs.get("limit", ["250"])[0])
                     self._send_json({"rows": storage.load_kline(config.db_path, code, limit)})
+                elif path == "/api/stock-moneyflow":
+                    code = qs.get("code", [""])[0]
+                    self._send_json({"rows": storage.load_stock_moneyflow(config.db_path, code, int(qs.get("limit", ["60"])[0]))})
                 elif path == "/api/similar":
                     code = qs.get("code", [""])[0]
                     self._send_json({"rows": storage.similar_stocks(config.db_path, code, int(qs.get("limit", ["10"])[0]))})

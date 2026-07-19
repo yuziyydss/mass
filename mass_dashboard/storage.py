@@ -1594,3 +1594,27 @@ def similar_stocks(db_path: Path, code: str, limit: int = 10) -> list[dict]:
     scored = [(abs(float(r["mass_zscore"]) - z), r) for r in rows]
     scored.sort(key=lambda x: x[0])
     return [dict(r) for _, r in scored[:limit]]
+
+
+def load_stock_moneyflow(db_path: Path, code: str, limit: int = 60) -> list[dict]:
+    """个股资金流历史（net_mf_amount 时序）。"""
+    with _read_conn(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT trade_date, net_mf_vol, net_mf_amount,
+                   buy_elg_vol, sell_elg_vol, buy_lg_vol, sell_lg_vol
+            FROM daily_moneyflow
+            WHERE code=? ORDER BY trade_date DESC LIMIT ?
+            """,
+            (code, limit),
+        ).fetchall()
+    if not rows:
+        return []
+    items = [dict(r) for r in rows]
+    items.reverse()
+    for it in items:
+        for k in ("net_mf_vol","net_mf_amount","buy_elg_vol","sell_elg_vol","buy_lg_vol","sell_lg_vol"):
+            if it[k] is not None:
+                try: it[k] = round(float(it[k]), 2)
+                except: pass
+    return items
