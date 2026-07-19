@@ -35,6 +35,7 @@ def run_backtest(
     hold_days: int = 5,
     direction: str = "top",  # top=选高因子, bottom=选低因子
     benchmark: str = "equal",  # equal=等权全市场基准
+    cost_bps: float = 10.0,  # 单边交易成本(基点),换仓时扣除
 ) -> dict:
     """按因子选股回测。
 
@@ -109,13 +110,13 @@ def run_backtest(
             continue
         stock_rets = (p1[valid] / p0[valid] - 1)
         port_ret = float(stock_rets.mean())
+        # 扣交易成本：每次换仓买卖双边，cost_bps基点
+        port_ret -= 2 * cost_bps / 10000.0
         portfolio_returns.append(port_ret)
         holdings_count.append(int(valid.sum()))
         rebalance_dates.append(date)
         last_holdings = [{"code": c, "weight": round(1.0/valid.sum(), 4), "return": round(float(stock_rets[c]), 4)}
                          for c in valid.index[valid.values].tolist()]
-
-        # 基准：等权全市场
         if benchmark == "equal":
             all_p0 = close_panel.loc[date].dropna()
             all_p1 = close_panel.loc[next_date].dropna()

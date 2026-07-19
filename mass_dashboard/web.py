@@ -459,6 +459,7 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                             top_n=int(qs.get("n", ["50"])[0]),
                             hold_days=int(qs.get("hold", ["5"])[0]),
                             direction=qs.get("dir", ["top"])[0],
+                            cost_bps=float(qs.get("cost", ["10"])[0]),
                         )
                     )
                 else:
