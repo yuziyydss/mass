@@ -531,6 +531,8 @@
             <div class="subtle" style="margin:10px 0 6px">多因子 IC 横向对比</div>
             <div id="factorCompare" style="margin-bottom:12px"></div>
             <div id="factorSummary" style="margin-bottom:12px"></div>
+            <div class="subtle" style="margin:14px 0 6px">因子衰减对比（各因子 IC 随周期）</div>
+            <canvas id="decayChart" width="1140" height="180"></canvas>
             <div class="subtle" style="margin:10px 0 6px">因子间相关性矩阵</div>
             <div id="factorCorrHeat" style="margin-bottom:12px"></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
@@ -997,9 +999,52 @@
         // 因子值分布
         loadDistribution(factor);
         loadIcBox();
+        loadDecay();
       } catch (e) {
         $("factorStatus").textContent = "错误: " + e.message;
       }
+    }
+
+    async function loadDecay() {
+      try {
+        const d = await getJson("/api/factor-decay");
+        const rows = d.rows || [];
+        if (!rows.length) return;
+        // 每个因子一条线：周期(5/10/20) 的 IC
+        const periods = ["5","10","20"];
+        const factors = rows.map(r => r.factor);
+        const series = rows.map(r => periods.map(p => r[`ic_${p}`]));
+        const colors = ["#0d7c66","#c45a2d","#7b3fa0","#d97706","#067647","#b42318","#3b82f6","#9333ea"];
+        // x轴是周期,每个因子一条线
+        const canvas = $("decayChart");
+        const ctx = canvas.getContext("2d");
+        const w = canvas.width, h = canvas.height;
+        ctx.clearRect(0,0,w,h); ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);
+        const vals = series.flat().filter(v => v != null);
+        if (vals.length < 2) return;
+        const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+        const span = Math.max(0.001, hi-lo);
+        const padL=44,padR=110,padT=12,padB=26;
+        const n = periods.length;
+        const xAt = i => padL + i*(w-padL-padR)/(n-1);
+        const yAt = v => padT + (1-(v-lo)/span)*(h-padT-padB);
+        ctx.strokeStyle="#eef1ee"; ctx.lineWidth=1;
+        for(let i=0;i<=3;i++){const y=padT+i*(h-padT-padB)/3;ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(w-padR,y);ctx.stroke();}
+        const y0=yAt(0); ctx.strokeStyle="#999"; ctx.beginPath();ctx.moveTo(padL,y0);ctx.lineTo(w-padR,y0);ctx.stroke();
+        ctx.fillStyle="#6b746f"; ctx.font="10px Segoe UI";
+        ctx.fillText(hi.toFixed(2),4,padT+8); ctx.fillText(lo.toFixed(2),4,h-padB);
+        periods.forEach((p,i)=>{ctx.fillText(p+"日",xAt(i)-8,h-8);});
+        series.forEach((s,idx)=>{
+          ctx.strokeStyle = colors[idx%colors.length];
+          ctx.lineWidth = 1.6; ctx.beginPath();
+          let started = false;
+          s.forEach((v,i)=>{ if(v==null) return; const x=xAt(i),y=yAt(v); if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y); });
+          ctx.stroke();
+          // 图例
+          ctx.fillStyle = colors[idx%colors.length]; ctx.font="10px Segoe UI";
+          ctx.fillText(factors[idx], w-padR+8, padT+8+idx*14);
+        });
+      } catch(e) {}
     }
 
     async function loadIcBox() {
