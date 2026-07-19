@@ -620,10 +620,17 @@ def build_portfolio(db_path, components: list[dict], top_n: int = 30) -> dict:
             "industry": m.get("industry","") if isinstance(m, pd.Series) else "",
             "factors": {n: round(float(factor_values[n].get(code, float("nan"))), 4) for n in panels if code in factor_values[n].index},
         })
+    # 行业暴露
+    ind_count = {}
+    for x in top_list:
+        ind = x.get("industry") or "未分类"
+        ind_count[ind] = ind_count.get(ind, 0) + 1
+    industry_exposure = [{"industry": k, "count": v, "pct": round(v/len(top_list)*100, 2)} for k, v in sorted(ind_count.items(), key=lambda x: -x[1])]
     return {
         "date": latest,
         "n_candidates": len(score),
         "top": top_list,
+        "industry_exposure": industry_exposure,
     }
 
 
