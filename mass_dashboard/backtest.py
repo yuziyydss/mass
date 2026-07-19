@@ -75,6 +75,7 @@ def run_backtest(
     benchmark_returns = []  # 基准收益
     holdings_count = []
     rebalance_dates = []
+    last_holdings = []  # 最后一期持仓明细
 
     for i in rebalance_indices:
         date = dates[i]
@@ -111,6 +112,8 @@ def run_backtest(
         portfolio_returns.append(port_ret)
         holdings_count.append(int(valid.sum()))
         rebalance_dates.append(date)
+        last_holdings = [{"code": c, "weight": round(1.0/valid.sum(), 4), "return": round(float(stock_rets[c]), 4)}
+                         for c in valid.index[valid.values].tolist()]
 
         # 基准：等权全市场
         if benchmark == "equal":
@@ -168,5 +171,6 @@ def run_backtest(
         "max_drawdown": round(max_drawdown, 4),
         "win_rate": round(float((port_returns > 0).mean()), 4),
         "avg_holdings": round(float(np.mean(holdings_count)), 1),
+        "last_holdings": last_holdings,
         "date_range": [rebalance_dates[0], rebalance_dates[-1]],
     }
