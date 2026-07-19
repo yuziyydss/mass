@@ -48,15 +48,24 @@ class DashboardScheduler:
         thread.start()
         return True, "任务已启动"
 
-    def _run_guarded(self, trade_date: Optional[str], force: bool) -> None:
+    def _run_guarded(self, trade_date: Optional[str], force: bool, max_retries: int = 3) -> None:
         # 原子获取锁：acquire(blocking=False) 把"检查"和"获取"合并成一步，
         # 避免 trigger_run 的 locked() 预检查与这里的 acquire 之间的竞态。
         if not self._job_lock.acquire(blocking=False):
             return  # 被并发任务抢了，直接退出
         try:
-            run_mass_pipeline(self.config, trade_date=trade_date, force=force)
-        except Exception as err:
-            LOGGER.error("任务运行失败: %s", err)
+            last_err = None
+            for attempt in range(max_retries):
+                try:
+                    run_mass_pipeline(self.config, trade_date=trade_date, force=force)
+                    return  # 成功则退出
+                except Exception as err:
+                    last_err = err
+                    LOGGER.warning("任务运行失败(尝试 %s/%s): %s", attempt + 1, max_retries, err)
+                    if attempt < max_retries - 1:
+                        time.sleep(30)  # 等30秒重试
+            # 全部重试失败
+            LOGGER.error("任务运行最终失败(共尝试 %s 次): %s", max_retries, last_err)
         finally:
             self._job_lock.release()
 
