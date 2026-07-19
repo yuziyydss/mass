@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
+import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from . import storage
@@ -344,6 +345,29 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                     self._send_json({"rows": factor_analysis.compare_factors(config.db_path, specs)})
                 elif path == "/api/factor-distribution":
                     self._send_json(factor_analysis.factor_distribution(config.db_path, factor_col=qs.get("factor", ["mass_zscore"])[0]))
+                elif path == "/api/factor-export":
+                    import csv, io
+                    factor = qs.get("factor", ["mass_zscore"])[0]
+                    if factor in ("mass_zscore","mass_neu","mass_raw"):
+                        panel = storage.load_factor_panel(config.db_path, factor)
+                    else:
+                        panel = None
+                    if panel is None or panel.empty:
+                        self._send_json({"error": "因子为空或不支持导出"})
+                        return
+                    buf = io.StringIO()
+                    writer = csv.writer(buf)
+                    codes = list(panel.columns)
+                    writer.writerow(["trade_date"] + codes)
+                    for date in panel.index:
+                        writer.writerow([date] + [panel.loc[date,c] if pd.notna(panel.loc[date,c]) else "" for c in codes])
+                    body = buf.getvalue().encode("utf-8-sig")
+                    self.send_response(200)
+                    self.send_header("Content-Type","text/csv;charset=utf-8")
+                    self.send_header("Content-Disposition",f"attachment; filename=factor_{factor}.csv")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
                 elif path == "/api/ic-heatmap":
                     self._send_json(factor_analysis.ic_heatmap(config.db_path, factor_col=qs.get("factor", ["mass_zscore"])[0]))
                 elif path == "/api/portfolio":
