@@ -1441,3 +1441,40 @@ def compare_stocks_zscore(db_path: Path, codes: list[str]) -> dict:
         "dates": pivot.index.tolist(),
         "series": {code: [round(float(x), 4) if pd.notna(x) else None for x in pivot[code]] for code in pivot.columns if code in codes},
     }
+
+
+def correlation_matrix(db_path: Path, codes: list[str], lookback: int = 60) -> dict:
+    """多股收益率相关性矩阵。
+    返回 {codes, matrix(二维数组)}
+    """
+    if not codes:
+        return {"codes": [], "matrix": []}
+    codes = [str(c) for c in codes]
+    with _read_conn(db_path) as conn:
+        row = conn.execute("SELECT MAX(trade_date) AS d FROM daily_bars").fetchone()
+        if not row or not row["d"]:
+            return {"codes": codes, "matrix": []}
+        from datetime import datetime, timedelta
+        end_date = row["d"]
+        start = (datetime.strptime(end_date, "%Y%m%d") - timedelta(days=lookback*2)).strftime("%Y%m%d")
+        placeholders = ",".join(["?"] * len(codes))
+        df = pd.read_sql_query(
+            f"SELECT trade_date, code, close FROM daily_bars WHERE trade_date BETWEEN ? AND ? AND code IN ({placeholders}) AND close IS NOT NULL ORDER BY trade_date, code",
+            conn, params=[start, end_date] + codes,
+        )
+    if df.empty:
+        return {"codes": codes, "matrix": []}
+    df["close"] = pd.to_numeric(df["close"], errors="coerce")
+    pivot = df.pivot(index="trade_date", columns="code", values="close")
+    # 只保留存在的code,按输入顺序
+    present = [c for c in codes if c in pivot.columns]
+    if len(present) < 2:
+        return {"codes": present, "matrix": []}
+    rets = pivot[present].pct_change(fill_method=None).dropna()
+    if len(rets) < 5:
+        return {"codes": present, "matrix": []}
+    corr = rets.corr()
+    return {
+        "codes": present,
+        "matrix": [[round(float(corr.loc[a, b]), 3) if pd.notna(corr.loc[a, b]) else None for b in present] for a in present],
+    }
