@@ -706,3 +706,44 @@ def factor_decay_report(db_path, factors: list[str] = None, max_period: int = 20
             row["half_life"] = half
         results.append(row)
     return results
+
+
+def factor_correlation(db_path, factor_names: list[str]) -> dict:
+    """因子间截面相关性矩阵。看哪些因子高度相关(冗余)。"""
+    from . import momentum
+    panels = {}
+    for name in factor_names:
+        p = _load_factor_panel_by_name(db_path, name)
+        if p is not None and not p.empty:
+            panels[name] = p
+    if len(panels) < 2:
+        return {"error": "需要至少2个因子"}
+    # 取公共日期
+    common = None
+    for p in panels.values():
+        common = set(p.index) if common is None else common & set(p.index)
+    common = sorted(common) if common else []
+    if len(common) < 2:
+        return {"error": "因子无公共日期"}
+    # 最新截面日各因子值
+    latest = common[-1]
+    series = {n: panels[n].loc[latest].dropna() for n in panels}
+    # 公共股票
+    codes = None
+    for s in series.values():
+        codes = set(s.index) if codes is None else codes & set(s.index)
+    codes = list(codes) if codes else []
+    if len(codes) < 30:
+        return {"error": "公共股票不足"}
+    names = list(series.keys())
+    import numpy as np
+    matrix = []
+    for a in names:
+        row = []
+        sa = series[a].loc[codes].astype(float)
+        for b in names:
+            sb = series[b].loc[codes].astype(float)
+            corr = float(sa.corr(sb)) if sa.std() > 0 and sb.std() > 0 else None
+            row.append(round(corr, 3) if corr is not None and not np.isnan(corr) else None)
+        matrix.append(row)
+    return {"names": names, "matrix": matrix, "n_stocks": len(codes), "date": latest}

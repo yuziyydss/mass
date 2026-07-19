@@ -425,6 +425,9 @@ code{background:#f0f4f0;padding:2px 5px;border-radius:3px;color:#0d7c66}.m{color
                         if len(parts) >= 1 and parts[0].strip():
                             comps.append({"name": parts[0].strip(), "weight": float(parts[1]) if len(parts)>1 else 1.0, "sign": float(parts[2]) if len(parts)>2 else 1.0})
                     self._send_json(factor_analysis.build_portfolio(config.db_path, comps, int(qs.get("n", ["30"])[0])))
+                elif path == "/api/factor-correlation":
+                    names = qs.get("factors", ["mass_zscore,momentum_5,momentum_20,volatility_20,turnover_20"])[0].split(",")
+                    self._send_json(factor_analysis.factor_correlation(config.db_path, [n.strip() for n in names]))
                 elif path == "/api/factor-decay":
                     self._send_json({"rows": factor_analysis.factor_decay_report(config.db_path)})
                 elif path == "/api/factor-returns":
