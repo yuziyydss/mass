@@ -30,5 +30,15 @@ def check_mass_quality(df: pd.DataFrame, min_rows: int) -> list[tuple[str, str]]
         if industry_null_ratio > 0.2:
             alerts.append(("WARN", f"行业缺失比例偏高：{industry_null_ratio:.2%}"))
 
+    # 估值字段检查：pb/dv_ratio 若全空说明 schema 未迁移成功或拉取失败
+    for col, label in (("pb", "市净率PB"), ("dv_ratio", "股息率")):
+        if col in df.columns:
+            null_ratio = float(df[col].isna().mean())
+            if null_ratio > 0.5:
+                alerts.append(("WARN", f"{label} 缺失比例偏高：{null_ratio:.2%}"))
+        else:
+            # 列不存在：schema 迁移可能没生效
+            alerts.append(("ERROR", f"{label} 字段缺失（factor_mass_daily 无 {col} 列，检查 schema 迁移）"))
+
     return alerts
 

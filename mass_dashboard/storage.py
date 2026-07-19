@@ -5,12 +5,15 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
+import logging
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence
 
 import pandas as pd
+
+LOGGER = logging.getLogger("mass_dashboard.storage")
 
 MASS_COLUMNS = [
     "trade_date",
@@ -298,6 +301,31 @@ def init_db(db_path: Path) -> None:
             ON bottom_conditions (trade_date, conditions_met DESC);
             """
         )
+    _migrate(db_path)
+
+
+# 幂等 schema 迁移：检测旧库缺失的列并 ALTER TABLE ADD COLUMN。
+# 只加列、不删列、不改类型，安全可重复执行。
+# 新增字段时在这里登记 (表, 列, 类型)，旧库重启服务自动补列。
+SCHEMA_MIGRATIONS = {
+    "factor_mass_daily": [
+        ("pb", "REAL"),
+        ("dv_ratio", "REAL"),
+    ],
+}
+
+
+def _migrate(db_path: Path) -> None:
+    with connect(db_path) as conn:
+        for table, cols in SCHEMA_MIGRATIONS.items():
+            try:
+                existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            except sqlite3.OperationalError:
+                continue  # 表不存在（不应发生，init_db 刚建过），跳过
+            for col, typ in cols:
+                if col not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+                    LOGGER.info("schema 迁移: 表 %s 新增列 %s %s", table, col, typ)
 
 
 def utc_now() -> str:

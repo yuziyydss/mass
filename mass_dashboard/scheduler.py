@@ -49,11 +49,16 @@ class DashboardScheduler:
         return True, "任务已启动"
 
     def _run_guarded(self, trade_date: Optional[str], force: bool) -> None:
-        with self._job_lock:
-            try:
-                run_mass_pipeline(self.config, trade_date=trade_date, force=force)
-            except Exception as err:
-                LOGGER.error("任务运行失败: %s", err)
+        # 原子获取锁：acquire(blocking=False) 把"检查"和"获取"合并成一步，
+        # 避免 trigger_run 的 locked() 预检查与这里的 acquire 之间的竞态。
+        if not self._job_lock.acquire(blocking=False):
+            return  # 被并发任务抢了，直接退出
+        try:
+            run_mass_pipeline(self.config, trade_date=trade_date, force=force)
+        except Exception as err:
+            LOGGER.error("任务运行失败: %s", err)
+        finally:
+            self._job_lock.release()
 
     def _loop(self) -> None:
         while not self._stop_event.is_set():
